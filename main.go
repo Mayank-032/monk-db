@@ -11,7 +11,8 @@ import (
 )
 
 func main() {
-	store := storage.InitStore()
+	var size = 2000
+	store := storage.InitStore(size)
 	if store == nil {
 		log.Println("unable to init store")
 		os.Exit(1)
@@ -48,6 +49,8 @@ func main() {
 			continue
 		}
 
+		/*
+		// Commenting it out for testing write functionality only
 		if strings.EqualFold(block[0], constants.GET) {
 			key := block[1]
 			expectedVal := block[2]
@@ -64,9 +67,12 @@ func main() {
 				os.Exit(1)
 			}
 
-			// log.Printf("GET OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
+			log.Printf("GET OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
 			continue
 		}
+		*/
+
+
 	}
 
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()
