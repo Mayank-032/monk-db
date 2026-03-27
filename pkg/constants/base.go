@@ -1,5 +1,6 @@
 package constants
 
 const (
-	EMPTYSTRING = ""
+	EMPTYSTRING    = ""
+	MARSHALSPACING = "    "
 )

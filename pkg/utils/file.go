@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"monk-db/pkg/constants"
 	"os"
 )
 
@@ -22,7 +23,7 @@ func NewFile(name, path string) *File {
 
 func (f *File) GetName() string {
 	if f == nil {
-		return ""
+		return constants.EMPTYSTRING
 	}
 
 	return f.name
@@ -48,13 +49,13 @@ func (f *File) Create() error {
 }
 
 func (f *File) Write(content any) error {
-	recordBytes, err := json.MarshalIndent(content, "", "    ")
+	recordBytes, err := json.MarshalIndent(content, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
 		log.Printf("unable to marshal records with err: %v\n", err.Error())
 		return err
 	}
 
-	err = os.WriteFile(f.path, recordBytes, 0644)
+	err = os.WriteFile(f.path, recordBytes, constants.FILEPERMISSION)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"monk-db/pkg/constants"
 	"monk-db/pkg/utils"
 	"os"
 )
@@ -28,7 +29,7 @@ func SetManifestLogfilePathAndCreate(name, path string) error {
 }
 
 func SetSSTableRecordsDirPathAndCreate(path string) error {
-	err := os.Mkdir(path, 0755)
+	err := os.Mkdir(path, constants.DIRPERMISSION)
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		log.Printf("unable to create records dir with err: %v\n", err.Error())
 		return err

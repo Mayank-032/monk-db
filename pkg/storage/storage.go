@@ -46,7 +46,7 @@ func (s *Store) Put(key, val string) (bool, error) {
 
 func (s *Store) Get(key string) (string, error) {
 	if s == nil || s.data == nil {
-		return "", errors.New(constants.ERRORSTORAGENOTINITIALIZED)
+		return constants.EMPTYSTRING, errors.New(constants.ERRORSTORAGENOTINITIALIZED)
 	}
 
 	key = strings.ToLower(key)

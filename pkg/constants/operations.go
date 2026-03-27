@@ -1,6 +1,13 @@
 package constants
 
+// CACHE OPERATIONS
 const (
 	PUT = "PUT"
 	GET = "GET"
+)
+
+// FILE OPERATIONS
+const (
+	FILEPERMISSION = 0644
+	DIRPERMISSION  = 0755
 )
