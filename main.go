@@ -3,9 +3,12 @@ package main
 import (
 	"log"
 	"monk-db/pkg/constants"
+	"monk-db/pkg/sstable"
+	"monk-db/pkg/storage"
 	"monk-db/pkg/utils"
-	"monk-db/storage"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -15,6 +18,20 @@ func main() {
 	store := storage.InitStore(size)
 	if store == nil {
 		log.Println("unable to init store")
+		os.Exit(1)
+		return
+	}
+
+	_, filename, _, _ := runtime.Caller(0)
+	baseDir := filepath.Dir(filename)
+
+	manifestFilepath := filepath.Join(baseDir, "./pkg/sstable/manifest.txt")
+	sstableRecordsDirPath := filepath.Join(baseDir, "./pkg/sstable/records")
+	if err := sstable.SetManifestLogfilePathAndCreate("manifest.txt", manifestFilepath); err != nil {
+		os.Exit(1)
+		return
+	}
+	if err := sstable.SetSSTableRecordsDirPathAndCreate(sstableRecordsDirPath); err != nil {
 		os.Exit(1)
 		return
 	}
@@ -50,28 +67,27 @@ func main() {
 		}
 
 		/*
-		// Commenting it out for testing write functionality only
-		if strings.EqualFold(block[0], constants.GET) {
-			key := block[1]
-			expectedVal := block[2]
+			// Commenting it out for testing write functionality only
+			if strings.EqualFold(block[0], constants.GET) {
+				key := block[1]
+				expectedVal := block[2]
 
-			res, err := store.Get(key)
-			if err != nil && err.Error() != constants.ERRNOTFOUND {
-				log.Printf("GET OPERATION with index: %v, for key: %v, failed with err: %v\n", index, key, err.Error())
-				os.Exit(1)
-				return
+				res, err := store.Get(key)
+				if err != nil && err.Error() != constants.ERRNOTFOUND {
+					log.Printf("GET OPERATION with index: %v, for key: %v, failed with err: %v\n", index, key, err.Error())
+					os.Exit(1)
+					return
+				}
+
+				if res != expectedVal {
+					log.Printf("INVALID GET OPERATION with index: %v, for key: %v\n", index, key)
+					os.Exit(1)
+				}
+
+				log.Printf("GET OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
+				continue
 			}
-
-			if res != expectedVal {
-				log.Printf("INVALID GET OPERATION with index: %v, for key: %v\n", index, key)
-				os.Exit(1)
-			}
-
-			log.Printf("GET OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
-			continue
-		}
 		*/
-
 
 	}
 
