@@ -1,9 +1,15 @@
 package constants
 
-// CACHE OPERATIONS
+// STORE OPERATIONS
 const (
 	PUT = "PUT"
 	GET = "GET"
+)
+
+// SSTABLE OPERATIONS
+const (
+	FLUSH = "FLUSH"
+	READ  = "READ"
 )
 
 // FILE OPERATIONS

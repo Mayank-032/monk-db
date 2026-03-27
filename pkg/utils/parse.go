@@ -2,7 +2,7 @@ package utils
 
 import (
 	"bufio"
-	"fmt"
+	"log"
 	"os"
 	"strings"
 )
@@ -10,7 +10,8 @@ import (
 func ParseFile(filePath string) ([][]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("unable to open file with err %v", err.Error())
+		log.Println("unable to open file: ", err.Error())
+		return nil, err
 	}
 	defer file.Close()
 

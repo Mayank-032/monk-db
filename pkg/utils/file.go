@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"monk-db/pkg/constants"
@@ -21,17 +20,54 @@ func NewFile(name, path string) *File {
 	}
 }
 
+func (f *File) Get() error {
+	if f == nil {
+		log.Println("invalid file operation")
+		return nil
+	}
+
+	file, err := os.Open(f.path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Println("unable to open file: ", err.Error())
+		return err
+	}
+
+	if file == nil {
+		log.Println("file does not exist")
+		return nil
+	}
+
+	f.file = file
+	return nil
+}
+
 func (f *File) GetName() string {
 	if f == nil {
+		log.Println("invalid file operation")
 		return constants.EMPTYSTRING
 	}
 
 	return f.name
 }
 
+func (f *File) Read() ([]byte, error) {
+	b, err := os.ReadFile(f.path)
+	if err != nil && !os.IsNotExist(err) {
+		log.Println("unable to read file: ", err.Error())
+		return nil, err
+	}
+
+	return b, nil
+}
+
 func (f *File) Create() error {
+	if f == nil {
+		return errors.New("invalid file")
+	}
+
 	fileInfo, err := os.Stat(f.path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Println("unable to get stat of the file: ", err.Error())
 		return err
 	}
 
@@ -41,6 +77,7 @@ func (f *File) Create() error {
 
 	file, err := os.Create(f.path)
 	if err != nil {
+		log.Println("unable to create file: ", err.Error())
 		return err
 	}
 
@@ -48,15 +85,14 @@ func (f *File) Create() error {
 	return nil
 }
 
-func (f *File) Write(content any) error {
-	recordBytes, err := json.MarshalIndent(content, constants.EMPTYSTRING, constants.MARSHALSPACING)
-	if err != nil {
-		log.Printf("unable to marshal records with err: %v\n", err.Error())
-		return err
+func (f *File) Write(payload []byte) error {
+	if f == nil {
+		return errors.New("invalid file")
 	}
 
-	err = os.WriteFile(f.path, recordBytes, constants.FILEPERMISSION)
+	err := os.WriteFile(f.path, payload, constants.FILEPERMISSION)
 	if err != nil {
+		log.Println("unable to write file: ", err.Error())
 		return err
 	}
 
@@ -64,9 +100,13 @@ func (f *File) Write(content any) error {
 }
 
 func (f *File) Prepend(newData []byte) error {
+	if f == nil {
+		return errors.New("invalid file")
+	}
+
 	// 1. Read the existing content (if file exists)
-	existingData, err := os.ReadFile(f.path)
-	if err != nil && !os.IsNotExist(err) {
+	existingData, err := f.Read()
+	if err != nil {
 		return err
 	}
 
@@ -75,7 +115,7 @@ func (f *File) Prepend(newData []byte) error {
 	combinedData = append(combinedData, existingData...)
 
 	// 3. Overwrite the file with the combined content
-	err = os.WriteFile(f.path, combinedData, 0644)
+	err = f.Write(combinedData)
 	if err != nil {
 		return err
 	}

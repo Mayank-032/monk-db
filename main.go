@@ -66,28 +66,25 @@ func main() {
 			continue
 		}
 
-		/*
-			// Commenting it out for testing write functionality only
-			if strings.EqualFold(block[0], constants.GET) {
-				key := block[1]
-				expectedVal := block[2]
+		if strings.EqualFold(block[0], constants.GET) {
+			key := block[1]
+			expectedVal := block[2]
 
-				res, err := store.Get(key)
-				if err != nil && err.Error() != constants.ERRNOTFOUND {
-					log.Printf("GET OPERATION with index: %v, for key: %v, failed with err: %v\n", index, key, err.Error())
-					os.Exit(1)
-					return
-				}
-
-				if res != expectedVal {
-					log.Printf("INVALID GET OPERATION with index: %v, for key: %v\n", index, key)
-					os.Exit(1)
-				}
-
-				log.Printf("GET OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
-				continue
+			res, err := store.Get(key)
+			if err != nil && err.Error() != constants.ERRNOTFOUND {
+				log.Printf("GET OPERATION with index: %v, for key: %v, failed with err: %v\n", index, key, err.Error())
+				os.Exit(1)
+				return
 			}
-		*/
+
+			if res != expectedVal {
+				log.Printf("INVALID GET OPERATION with index: %v, for key: %v\n", index, key)
+				os.Exit(1)
+			}
+
+			// log.Printf("GET OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
+			continue
+		}
 
 	}
 
