@@ -21,8 +21,8 @@ func SetManifestLogfilePathAndCreate(name, path string) error {
 	var manifestFile = utils.NewFile(manifestFileName, path)
 	err := manifestFile.Create()
 	if err != nil {
-		log.Printf("unable to create manifest file with err: %v\n", err.Error())
-		return err
+		log.Printf("create manifest file err: %v\n", err.Error())
+		return errors.New("unable to create manifest file")
 	}
 
 	manifestLogFilePath = path
@@ -32,8 +32,8 @@ func SetManifestLogfilePathAndCreate(name, path string) error {
 func SetSSTableRecordsDirPathAndCreate(path string) error {
 	err := os.Mkdir(path, constants.DIRPERMISSION)
 	if err != nil && !errors.Is(err, os.ErrExist) {
-		log.Printf("unable to create records dir with err: %v\n", err.Error())
-		return err
+		log.Printf("create records dir err: %v\n", err.Error())
+		return errors.New("unable to create records dir")
 	}
 
 	ssTableRecordsDirPath = path
@@ -60,8 +60,8 @@ func NewSSTable(count int, operation string) (*ssTable, error) {
 	}
 
 	if err != nil {
-		log.Println("err: ", err.Error())
-		return nil, err
+		log.Println("sstable init err: ", err.Error())
+		return nil, errors.New("unable to init sstable")
 	}
 
 	return &ssTable{
@@ -85,14 +85,14 @@ func (sst *ssTable) Flush(data map[string]string) error {
 
 	recordBytes, err := json.MarshalIndent(sstableRecords, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
-		log.Printf("unable to marshal records with err: %v\n", err.Error())
-		return err
+		log.Printf("marshal records err: %v\n", err.Error())
+		return errors.New("unable to flush records")
 	}
 
 	err = sst.file.Write(recordBytes)
 	if err != nil {
 		log.Println("unable to write content in record file")
-		return err
+		return errors.New("unable to flush records")
 	}
 
 	var manifestFile = utils.NewFile("manifest.txt", manifestLogFilePath)
@@ -104,7 +104,7 @@ func (sst *ssTable) Flush(data map[string]string) error {
 	err = manifestFile.Prepend([]byte(sst.file.GetName()))
 	if err != nil {
 		log.Println("unable to write content in manifest-log file")
-		return err
+		return errors.New("unable to flush records")
 	}
 
 	return nil
@@ -115,18 +115,37 @@ func (sst *ssTable) Read(key string) (string, error) {
 		return "", errors.New("sstable is not initialized")
 	}
 
+	val, err := utils.Cache.Get(sst.file.GetName())
+	if err == nil {
+		records, ok := val.([]Record)
+		if ok {
+			for _, r := range records {
+				if r.Key == key {
+					return r.Value, nil
+				}
+			}
+			return "", nil
+		}
+	}
+
+	if err != nil && err.Error() != constants.ERRNOTFOUND {
+		log.Println("unable to check from cache with err: ", err.Error())
+		return "", errors.New("unable to check from cache")
+	}
+
 	contentBytes, err := sst.file.Read()
 	if err != nil {
-		log.Println("unable to read file content")
-		return "", err
+		log.Println("read file content error: ", err.Error())
+		return "", errors.New("unable to read file")
 	}
 
 	var records = make([]Record, 0)
 	err = json.Unmarshal(contentBytes, &records)
 	if err != nil {
-		log.Println("unable to unmarshal file content")
-		return "", err
+		log.Println("unmarshal file content err: ", err.Error())
+		return "", errors.New("unable to read file")
 	}
+	utils.Cache.PUT(sst.file.GetName(), records)
 
 	for _, r := range records {
 		if r.Key == key {

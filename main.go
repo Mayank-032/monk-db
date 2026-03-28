@@ -36,6 +36,8 @@ func main() {
 		return
 	}
 
+	utils.NewLRUCache(3)
+
 	buffer, err := utils.ParseFile("./put.txt")
 	if err != nil {
 		log.Println("unable to parse file; err: ", err.Error())
