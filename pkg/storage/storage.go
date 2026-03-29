@@ -13,10 +13,10 @@ type Store struct {
 	size   int
 }
 
-func InitStore(size int) *Store {
+func InitStore(size, offset int) *Store {
 	return &Store{
 		data:   make(map[string]string, size),
-		offset: 0,
+		offset: offset,
 		size:   size,
 	}
 }
@@ -30,7 +30,7 @@ func (s *Store) Put(key, val string) (bool, error) {
 	s.data[key] = val
 
 	// if store is not filled, abort the function
-	if len(s.data) <= s.size {
+	if len(s.data) < s.size {
 		return true, nil
 	}
 

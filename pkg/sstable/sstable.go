@@ -8,6 +8,7 @@ import (
 	"monk-db/pkg/constants"
 	"monk-db/pkg/utils"
 	"os"
+	"sort"
 )
 
 var (
@@ -83,6 +84,10 @@ func (sst *ssTable) Flush(data map[string]string) error {
 		})
 	}
 
+	sort.SliceStable(sstableRecords, func(i, j int) bool {
+		return sstableRecords[i].Key < sstableRecords[j].Key
+	})
+
 	recordBytes, err := json.MarshalIndent(sstableRecords, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
 		log.Printf("marshal records err: %v\n", err.Error())
@@ -101,7 +106,7 @@ func (sst *ssTable) Flush(data map[string]string) error {
 		return err
 	}
 
-	err = manifestFile.Prepend([]byte(sst.file.GetName()))
+	err = manifestFile.Append([]byte(sst.file.GetName()))
 	if err != nil {
 		log.Println("unable to write content in manifest-log file")
 		return errors.New("unable to flush records")

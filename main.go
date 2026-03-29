@@ -9,18 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
 
 func main() {
-	var size = 2000
-	store := storage.InitStore(size)
-	if store == nil {
-		log.Println("unable to init store")
-		os.Exit(1)
-		return
-	}
+	utils.NewLRUCache(3)
+	log.Println("cache init success")
 
 	_, filename, _, _ := runtime.Caller(0)
 	baseDir := filepath.Dir(filename)
@@ -31,12 +27,27 @@ func main() {
 		os.Exit(1)
 		return
 	}
+	log.Println("records dir init success")
+
 	if err := sstable.SetSSTableRecordsDirPathAndCreate(sstableRecordsDirPath); err != nil {
 		os.Exit(1)
 		return
 	}
+	log.Println("manifest file init success")
 
-	utils.NewLRUCache(3)
+	var offset, err = getOffsetFromManifestFile("manifest.txt", manifestFilepath)
+	if err != nil {
+		os.Exit(1)
+		return
+	}
+
+	var size = 2000
+	store := storage.InitStore(size, offset)
+	if store == nil {
+		log.Println("unable to init store")
+		os.Exit(1)
+		return
+	}
 
 	buffer, err := utils.ParseFile("./put.txt")
 	if err != nil {
@@ -94,4 +105,43 @@ func main() {
 	log.Printf("total time taken: %vms\n", totalTimeTakenInMs)
 
 	os.Exit(0)
+}
+
+func getOffsetFromManifestFile(manifestFileName, manifestFilePath string) (int, error) {
+	var file = utils.NewFile(manifestFileName, manifestFilePath)
+	fileContent, err := file.Read()
+	if err != nil {
+		return -1, err
+	}
+
+	var fileContentStr = string(fileContent)
+
+	var fileContentPart = strings.Split(fileContentStr, "\n")
+	if len(fileContentPart) <= 1 {
+		return 0, nil
+	}
+
+	var lastLineContent = fileContentPart[len(fileContentPart)-2]
+	if lastLineContent == fileContentStr {
+		return 0, nil
+	}
+
+	var firstRecordFileName = strings.Split(lastLineContent, ".")[0]
+	if fileContentStr == firstRecordFileName {
+		return 0, nil
+	}
+
+	var recordFileCounter = strings.Split(firstRecordFileName, "-")
+	if len(recordFileCounter) < 2 {
+		return 0, nil
+	}
+
+	var counter = recordFileCounter[1]
+	counterInt, err := strconv.Atoi(counter)
+	if err != nil {
+		log.Println("unable to convert counter value to integer")
+		return -1, err
+	}
+
+	return counterInt, nil
 }

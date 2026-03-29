@@ -122,3 +122,27 @@ func (f *File) Prepend(newData []byte) error {
 
 	return nil
 }
+
+func (f *File) Append(newData []byte) error {
+	if f == nil {
+		return errors.New("invalid file")
+	}
+
+	// 1. Read the existing content (if file exists)
+	existingData, err := f.Read()
+	if err != nil {
+		return err
+	}
+
+	// 2. Combine: [New Data] + [Existing Data]
+	combinedData := append(newData, []byte("\n")...)
+	combinedData = append(existingData, combinedData...)
+
+	// 3. Overwrite the file with the combined content
+	err = f.Write(combinedData)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
