@@ -1,29 +1,85 @@
 package storage
 
 import (
+	"encoding/json"
 	"errors"
+	"log"
 	"monk-db/pkg/constants"
 	"monk-db/pkg/sstable"
+	"monk-db/pkg/utils"
 	"strings"
 )
 
-type Store struct {
-	data   map[string]string
-	offset int
-	size   int
+var (
+	walFileName string
+	walFilePath string
+)
+
+func SetWALFilePathAndCreate(name, path string) (*utils.File, error) {
+	var walFile = utils.NewFile(name, path)
+	err := walFile.Create(utils.CREATE, true)
+	if err != nil {
+		log.Printf("create wal file err: %v\n", err.Error())
+		return nil, errors.New("unable to create wal file")
+	}
+
+	log.Println("wal file created successfully")
+
+	walFileName = name
+	walFilePath = path
+	return walFile, nil
 }
 
-func InitStore(size, offset int) *Store {
-	return &Store{
-		data:   make(map[string]string, size),
-		offset: offset,
-		size:   size,
+type Store struct {
+	data    map[string]string
+	walFile *utils.File
+	offset  int
+	size    int
+}
+
+type WalRecord struct {
+	Operation string `json:"op"`
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+}
+
+func InitStore(size, offset int, walFileName, walFilePath string) (*Store, error) {
+	walFile, err := SetWALFilePathAndCreate(walFileName, walFilePath)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Store{
+		data:    make(map[string]string, size),
+		offset:  offset,
+		size:    size,
+		walFile: walFile,
+	}, nil
 }
 
 func (s *Store) Put(key, val string) (bool, error) {
 	if s == nil || s.data == nil {
 		return false, errors.New(constants.ERRORSTORAGENOTINITIALIZED)
+	}
+
+	var walRecord = WalRecord{
+		Operation: constants.PUT,
+		Key:       key,
+		Value:     val,
+	}
+	walRecordBytes, err := json.Marshal(walRecord)
+	if err != nil {
+		return false, errors.New("unable to marshal data")
+	}
+	walRecordBytes = append(walRecordBytes, []byte("\n")...)
+
+	err = s.walFile.Write(walRecordBytes, utils.APPEND, true)
+	if err != nil {
+		return false, errors.New("unable to write wal")
+	}
+	err = s.walFile.Close()
+	if err != nil {
+		return false, errors.New("unable to close file")
 	}
 
 	key = strings.ToLower(key)

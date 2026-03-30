@@ -19,13 +19,14 @@ var (
 )
 
 func SetManifestLogfilePathAndCreate(name, path string) error {
-	var manifestFile = utils.NewFile(manifestFileName, path)
-	err := manifestFile.Create()
+	var manifestFile = utils.NewFile(name, path)
+	err := manifestFile.Create(utils.CREATE, true)
 	if err != nil {
 		log.Printf("create manifest file err: %v\n", err.Error())
 		return errors.New("unable to create manifest file")
 	}
 
+	manifestFileName = name
 	manifestLogFilePath = path
 	return nil
 }
@@ -47,14 +48,14 @@ type ssTable struct {
 
 func NewSSTable(count int, operation string) (*ssTable, error) {
 	var fileName = fmt.Sprintf("sst-%v.json", count)
-	var pathToFile = fmt.Sprintf("%v/%v", ssTableRecordsDirPath, fileName)
+	var pathToFile = ssTableRecordsDirPath
 
 	var file *utils.File
 	var err error
 	switch operation {
 	case constants.FLUSH:
 		file = utils.NewFile(fileName, pathToFile)
-		err = file.Create()
+		err = file.Create(utils.DEFAULT, true)
 	case constants.READ:
 		file = utils.NewFile(fileName, pathToFile)
 		err = file.Get()
@@ -94,19 +95,19 @@ func (sst *ssTable) Flush(data map[string]string) error {
 		return errors.New("unable to flush records")
 	}
 
-	err = sst.file.Write(recordBytes)
+	err = sst.file.Write(recordBytes, utils.DEFAULT, true)
 	if err != nil {
 		log.Println("unable to write content in record file")
 		return errors.New("unable to flush records")
 	}
 
-	var manifestFile = utils.NewFile("manifest.txt", manifestLogFilePath)
-	err = manifestFile.Create()
+	var manifestFile = utils.NewFile(manifestFileName, manifestLogFilePath)
+	err = manifestFile.Get()
 	if err != nil {
 		return err
 	}
 
-	err = manifestFile.Append([]byte(sst.file.GetName()))
+	err = manifestFile.AppendWithTmpFile([]byte(sst.file.GetName()))
 	if err != nil {
 		log.Println("unable to write content in manifest-log file")
 		return errors.New("unable to flush records")
@@ -147,6 +148,11 @@ func (sst *ssTable) Read(key string) (string, error) {
 	var records = make([]Record, 0)
 	err = json.Unmarshal(contentBytes, &records)
 	if err != nil {
+		fmt.Println("contentBytes: ", string(contentBytes))
+		fmt.Println("sst-file-name: ", sst.file.GetName())
+		fmt.Println("sst-file-path: ", sst.file.GetPath())
+		fmt.Println("sst-file-fullpath: ", sst.file.GetFileFullPath())
+
 		log.Println("unmarshal file content err: ", err.Error())
 		return "", errors.New("unable to read file")
 	}
