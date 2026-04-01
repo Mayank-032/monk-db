@@ -300,6 +300,15 @@ func (f *File) Rename(name string) error {
 	return nil
 }
 
+func (f *File) Reset(isSync bool) error {
+	if err := f.Create(TRUNC, isSync); err != nil {
+		log.Println("unable to reset file")
+		return err
+	}
+
+	return nil
+}
+
 func (f *File) Close() error {
 	err := f.file.Close()
 	if err != nil {

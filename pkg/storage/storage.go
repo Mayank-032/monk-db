@@ -44,17 +44,56 @@ type WalRecord struct {
 }
 
 func InitStore(size, offset int, walFileName, walFilePath string) (*Store, error) {
+	// 1. Create and Set the file
 	walFile, err := SetWALFilePathAndCreate(walFileName, walFilePath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Store{
+	// 2. read the walFile and unmarshal it into the data structure
+	walFileBytes, err := walFile.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	var store = &Store{
 		data:    make(map[string]string, size),
 		offset:  offset,
 		size:    size,
 		walFile: walFile,
-	}, nil
+	}
+
+	var data = make(map[string]string, size)
+
+	var walFileStr = string(walFileBytes)
+	if len(walFileStr) == 0 {
+		return store, nil
+	}
+
+	var walFileRecords = strings.Split(walFileStr, "\n")
+	if len(walFileRecords) == 0 {
+		return store, nil
+	}
+
+	for _, record := range walFileRecords {
+		if len(record) == 0 {
+			continue
+		}
+
+		var walRecord WalRecord
+		err = json.Unmarshal([]byte(record), &walRecord)
+		if err != nil {
+			log.Println("unable to unmarshal record while loading store")
+			return nil, err
+		}
+
+		if strings.EqualFold(walRecord.Operation, constants.PUT) {
+			data[walRecord.Key] = walRecord.Value
+		}
+	}
+
+	store.data = data
+	return store, nil
 }
 
 func (s *Store) Put(key, val string) (bool, error) {
@@ -96,11 +135,19 @@ func (s *Store) Put(key, val string) (bool, error) {
 		return false, err
 	}
 
+	// flush to disk if limit reached
 	err = sstable.Flush(s.data)
 	if err != nil {
 		return false, err
 	}
 
+	// reset the file
+	err = s.walFile.Reset(true)
+	if err != nil {
+		return false, err
+	}
+
+	// reset the memtable
 	s.data = make(map[string]string, s.size)
 	s.offset = s.offset + 1
 

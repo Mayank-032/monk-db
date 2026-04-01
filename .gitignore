@@ -1,3 +1,4 @@
 /pkg/sstable/records
 /pkg/sstable/manifest.txt
+wal.db
 .DS_STORE

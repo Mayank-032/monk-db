@@ -46,13 +46,17 @@ func main() {
 	var walFilename = "wal.db"
 	var walFilepath = filepath.Join(baseDir, "./pkg/storage")
 	var size = 2000
+
+	var initStoreStartTime = time.Now()
 	store, err := storage.InitStore(size, offset, walFilename, walFilepath)
+	var initStoreTimeDuration = time.Since(initStoreStartTime).Milliseconds()
+
 	if err != nil || store == nil {
 		log.Println("unable to init store")
 		os.Exit(1)
 		return
 	}
-	log.Println("memtable init success")
+	log.Println("memtable init success, total initialization time taken (in ms): ", initStoreTimeDuration)
 
 	buffer, err := utils.ParseFile("./put.txt")
 	if err != nil {
@@ -127,12 +131,12 @@ func main() {
 
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()
 
-	var avgTimeTakenForPutOperationsInMs = int(math.Ceil(float64(totalPutTimeInMs) / float64(totalPutOperations)))
-	var avgTimeTakenForGetOperationsInMs = int(math.Ceil(float64(totalGetTimeInMs) / float64(totalGetOperations)))
+	var avgTimeTakenForPutOperationsInMs = math.Round(float64(totalPutTimeInMs) / float64(totalPutOperations))
+	var avgTimeTakenForGetOperationsInMs = math.Round(float64(totalGetTimeInMs) / float64(totalGetOperations))
 
-	log.Printf("Avg. time taken for all PUT operations: %vms\n", avgTimeTakenForPutOperationsInMs)
-	log.Printf("Avg. time taken for all GET operations: %vms\n", avgTimeTakenForGetOperationsInMs)
-	log.Printf("total time taken for all 30k combined operations: %vms\n", totalTimeTakenInMs)
+	log.Printf("Avg. time taken for all PUT operations: %v ms\n", avgTimeTakenForPutOperationsInMs)
+	log.Printf("Avg. time taken for all GET operations: %v ms\n", avgTimeTakenForGetOperationsInMs)
+	log.Printf("total time taken for all 30k combined operations: %v ms\n", totalTimeTakenInMs)
 
 	os.Exit(0)
 }
