@@ -56,7 +56,7 @@ func main() {
 		os.Exit(1)
 		return
 	}
-	log.Println("memtable init success, total initialization time taken (in ms): ", initStoreTimeDuration)
+	log.Printf("memtable init success, total initialization time taken: %v ms\n", initStoreTimeDuration)
 
 	buffer, err := utils.ParseFile("./put.txt")
 	if err != nil {
