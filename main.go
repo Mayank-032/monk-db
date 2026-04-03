@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"math"
 	"monk-db/pkg/constants"
 	"monk-db/pkg/sstable"
 	"monk-db/pkg/storage"
@@ -16,7 +15,7 @@ import (
 )
 
 func main() {
-	utils.NewLRUCache(3)
+	utils.NewLRUCache(6)
 	log.Println("cache init success")
 
 	_, filename, _, _ := runtime.Caller(0)
@@ -65,8 +64,6 @@ func main() {
 		return
 	}
 
-	startTime := time.Now()
-
 	var (
 		// PUT OPERATIONS
 		totalPutTimeInMs   = 0
@@ -76,6 +73,8 @@ func main() {
 		totalGetTimeInMs   = 0
 		totalGetOperations = 0
 	)
+
+	startTime := time.Now()
 	for index, block := range buffer {
 		if strings.EqualFold(block[0], constants.PUT) {
 			key := block[1]
@@ -128,11 +127,10 @@ func main() {
 		}
 
 	}
-
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()
 
-	var avgTimeTakenForPutOperationsInMs = math.Round(float64(totalPutTimeInMs) / float64(totalPutOperations))
-	var avgTimeTakenForGetOperationsInMs = math.Round(float64(totalGetTimeInMs) / float64(totalGetOperations))
+	var avgTimeTakenForPutOperationsInMs = float64(totalPutTimeInMs) / float64(totalPutOperations)
+	var avgTimeTakenForGetOperationsInMs = float64(totalGetTimeInMs) / float64(totalGetOperations)
 
 	log.Printf("Avg. time taken for all PUT operations: %v ms\n", avgTimeTakenForPutOperationsInMs)
 	log.Printf("Avg. time taken for all GET operations: %v ms\n", avgTimeTakenForGetOperationsInMs)

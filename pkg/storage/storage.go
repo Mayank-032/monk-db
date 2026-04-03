@@ -116,10 +116,6 @@ func (s *Store) Put(key, val string) (bool, error) {
 	if err != nil {
 		return false, errors.New("unable to write wal")
 	}
-	err = s.walFile.Close()
-	if err != nil {
-		return false, errors.New("unable to close file")
-	}
 
 	key = strings.ToLower(key)
 	s.data[key] = val
@@ -145,6 +141,11 @@ func (s *Store) Put(key, val string) (bool, error) {
 	err = s.walFile.Reset(true)
 	if err != nil {
 		return false, err
+	}
+
+	err = s.walFile.Close()
+	if err != nil {
+		return false, errors.New("unable to close file")
 	}
 
 	// reset the memtable
