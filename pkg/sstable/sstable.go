@@ -31,6 +31,11 @@ func SetManifestLogfilePathAndCreate(name, path string) error {
 	return nil
 }
 
+func GetManifestLogfileMetadata() *utils.File {
+	var manifestFile = utils.NewFile(manifestFileName, manifestLogFilePath)
+	return manifestFile
+}
+
 func SetSSTableRecordsDirPathAndCreate(path string) error {
 	err := os.Mkdir(path, constants.DIRPERMISSION)
 	if err != nil && !errors.Is(err, os.ErrExist) {
@@ -40,6 +45,10 @@ func SetSSTableRecordsDirPathAndCreate(path string) error {
 
 	ssTableRecordsDirPath = path
 	return nil
+}
+
+func GetRecordDirMetadata() string {
+	return ssTableRecordsDirPath
 }
 
 type ssTable struct {

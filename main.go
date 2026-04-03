@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -22,7 +21,7 @@ func main() {
 	baseDir := filepath.Dir(filename)
 
 	manifestFilename := "manifest.txt"
-	manifestFilepath := filepath.Join(baseDir, "./pkg/sstable")
+	// manifestFilepath := filepath.Join(baseDir, "./pkg/sstable")
 	sstableRecordsDirPath := filepath.Join(baseDir, "./pkg/sstable/records")
 	if err := sstable.SetManifestLogfilePathAndCreate(manifestFilename, "./pkg/sstable"); err != nil {
 		os.Exit(1)
@@ -36,18 +35,12 @@ func main() {
 	}
 	log.Println("manifest file init success")
 
-	var offset, err = getOffsetFromManifestFile(manifestFilename, manifestFilepath)
-	if err != nil {
-		os.Exit(1)
-		return
-	}
-
 	var walFilename = "wal.db"
 	var walFilepath = filepath.Join(baseDir, "./pkg/storage")
 	var size = 2000
 
 	var initStoreStartTime = time.Now()
-	store, err := storage.InitStore(size, offset, walFilename, walFilepath)
+	store, err := storage.InitStore(size, walFilename, walFilepath)
 	var initStoreTimeDuration = time.Since(initStoreStartTime).Milliseconds()
 
 	if err != nil || store == nil {
@@ -137,43 +130,4 @@ func main() {
 	log.Printf("total time taken for all 30k combined operations: %v ms\n", totalTimeTakenInMs)
 
 	os.Exit(0)
-}
-
-func getOffsetFromManifestFile(manifestFileName, manifestFilePath string) (int, error) {
-	var file = utils.NewFile(manifestFileName, manifestFilePath)
-	fileContent, err := file.Read()
-	if err != nil {
-		return -1, err
-	}
-
-	var fileContentStr = string(fileContent)
-
-	var fileContentPart = strings.Split(fileContentStr, "\n")
-	if len(fileContentPart) <= 1 {
-		return 0, nil
-	}
-
-	var lastLineContent = fileContentPart[len(fileContentPart)-2]
-	if lastLineContent == fileContentStr {
-		return 0, nil
-	}
-
-	var firstRecordFileName = strings.Split(lastLineContent, ".")[0]
-	if fileContentStr == firstRecordFileName {
-		return 0, nil
-	}
-
-	var recordFileCounter = strings.Split(firstRecordFileName, "-")
-	if len(recordFileCounter) < 2 {
-		return 0, nil
-	}
-
-	var counter = recordFileCounter[1]
-	counterInt, err := strconv.Atoi(counter)
-	if err != nil {
-		log.Println("unable to convert counter value to integer")
-		return -1, err
-	}
-
-	return counterInt, nil
 }

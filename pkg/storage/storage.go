@@ -3,11 +3,13 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"monk-db/pkg/constants"
 	"monk-db/pkg/sstable"
 	"monk-db/pkg/utils"
 	"strings"
+	"sync"
 )
 
 var (
@@ -43,56 +45,58 @@ type WalRecord struct {
 	Value     string `json:"value"`
 }
 
-func InitStore(size, offset int, walFileName, walFilePath string) (*Store, error) {
+func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
 	// 1. Create and Set the file
 	walFile, err := SetWALFilePathAndCreate(walFileName, walFilePath)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. read the walFile and unmarshal it into the data structure
-	walFileBytes, err := walFile.Read()
-	if err != nil {
-		return nil, err
-	}
-
 	var store = &Store{
 		data:    make(map[string]string, size),
-		offset:  offset,
 		size:    size,
 		walFile: walFile,
 	}
 
-	var data = make(map[string]string, size)
+	// 2. load data from wal file and handle dangling files on disk
+	var dataChan = make(chan map[string]string, size)
+	var errorChan = make(chan error, 2)
+	var wg sync.WaitGroup
 
-	var walFileStr = string(walFileBytes)
-	if len(walFileStr) == 0 {
-		return store, nil
-	}
+	wg.Add(1)
+	go loadFromWalFile(walFile, size, dataChan, errorChan, &wg)
 
-	var walFileRecords = strings.Split(walFileStr, "\n")
-	if len(walFileRecords) == 0 {
-		return store, nil
-	}
+	var offsetChan = make(chan int, 1)
+	wg.Add(1)
+	go handleDanglingFileAndGetOffset(sstable.GetManifestLogfileMetadata(), sstable.GetRecordDirMetadata(), offsetChan, errorChan, &wg)
 
-	for _, record := range walFileRecords {
-		if len(record) == 0 {
-			continue
-		}
+	go func() {
+		wg.Wait()
+		close(errorChan)
+		close(dataChan)
+		close(offsetChan)
+	}()
 
-		var walRecord WalRecord
-		err = json.Unmarshal([]byte(record), &walRecord)
-		if err != nil {
-			log.Println("unable to unmarshal record while loading store")
-			return nil, err
-		}
-
-		if strings.EqualFold(walRecord.Operation, constants.PUT) {
-			data[walRecord.Key] = walRecord.Value
+	for e := range errorChan {
+		if e != nil {
+			return nil, e
 		}
 	}
 
-	store.data = data
+	var data = make(map[string]string, 0)
+	for d := range dataChan {
+		data = d
+	}
+
+	for o := range offsetChan {
+		fmt.Println("offset: ", o)
+		store.offset = o
+	}
+
+	if data != nil || len(data) != 0 {
+		store.data = data
+	}
+
 	return store, nil
 }
 
