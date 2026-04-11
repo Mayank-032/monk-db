@@ -81,17 +81,9 @@ func NewSSTable(count int, operation string) (*ssTable, error) {
 }
 
 // it will convert to respective data structure and flush it to the log file
-func (sst *ssTable) Flush(data map[string]string) error {
+func (sst *ssTable) Flush(sstableRecords []Record) error {
 	if sst == nil {
 		return errors.New("sstable is not initialized")
-	}
-
-	var sstableRecords = make([]Record, 0, len(data))
-	for key, val := range data {
-		sstableRecords = append(sstableRecords, Record{
-			Key:   key,
-			Value: val,
-		})
 	}
 
 	sort.SliceStable(sstableRecords, func(i, j int) bool {

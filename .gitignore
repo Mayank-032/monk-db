@@ -3,3 +3,4 @@
 /pkg/sstable/wal.*
 .DS_STORE
 pkg/storage/wal.db
+*.txt

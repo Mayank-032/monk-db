@@ -2,8 +2,9 @@ package constants
 
 // STORE OPERATIONS
 const (
-	PUT = "PUT"
-	GET = "GET"
+	PUT    = "PUT"
+	GET    = "GET"
+	DELETE = "DELETE"
 )
 
 // SSTABLE OPERATIONS

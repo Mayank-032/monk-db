@@ -32,8 +32,14 @@ func SetWALFilePathAndCreate(name, path string) (*utils.File, error) {
 	return walFile, nil
 }
 
+type Metadata struct {
+	Key       string
+	Val       string
+	isDeleted bool
+}
+
 type Store struct {
-	data    map[string]string
+	data    map[string]Metadata
 	walFile *utils.File
 	offset  int
 	size    int
@@ -53,21 +59,22 @@ func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
 	}
 
 	var store = &Store{
-		data:    make(map[string]string, size),
+		data:    make(map[string]Metadata, size),
 		size:    size,
 		walFile: walFile,
 	}
 
-	// 2. load data from wal file and handle dangling files on disk
-	var dataChan = make(chan map[string]string, size)
+	var dataChan = make(chan map[string]Metadata, size)
 	var errorChan = make(chan error, 2)
 	var wg sync.WaitGroup
 
 	wg.Add(1)
+	// 2.1 load data from wal file
 	go loadFromWalFile(walFile, size, dataChan, errorChan, &wg)
 
 	var offsetChan = make(chan int, 1)
 	wg.Add(1)
+	// 2.2 handle dangling files on disk
 	go handleDanglingFileAndGetOffset(sstable.GetManifestLogfileMetadata(), sstable.GetRecordDirMetadata(), offsetChan, errorChan, &wg)
 
 	go func() {
@@ -83,7 +90,7 @@ func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
 		}
 	}
 
-	var data = make(map[string]string, 0)
+	var data = make(map[string]Metadata, 0)
 	for d := range dataChan {
 		data = d
 	}
@@ -100,13 +107,20 @@ func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
 	return store, nil
 }
 
-func (s *Store) Put(key, val string) (bool, error) {
+func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 	if s == nil || s.data == nil {
 		return false, errors.New(constants.ERRORSTORAGENOTINITIALIZED)
 	}
 
+	key = strings.ToLower(key)
+
+	var op = constants.PUT
+	if isDeleted {
+		op = constants.DELETE
+	}
+
 	var walRecord = WalRecord{
-		Operation: constants.PUT,
+		Operation: op,
 		Key:       key,
 		Value:     val,
 	}
@@ -121,8 +135,11 @@ func (s *Store) Put(key, val string) (bool, error) {
 		return false, errors.New("unable to write wal")
 	}
 
-	key = strings.ToLower(key)
-	s.data[key] = val
+	s.data[key] = Metadata{
+		Key:       key,
+		Val:       val,
+		isDeleted: isDeleted,
+	}
 
 	// if store is not filled, abort the function
 	if len(s.data) < s.size {
@@ -135,8 +152,10 @@ func (s *Store) Put(key, val string) (bool, error) {
 		return false, err
 	}
 
+	var sstableRecords = convertToSSTableDataFormat(s.data)
+
 	// flush to disk if limit reached
-	err = sstable.Flush(s.data)
+	err = sstable.Flush(sstableRecords)
 	if err != nil {
 		return false, err
 	}
@@ -153,7 +172,7 @@ func (s *Store) Put(key, val string) (bool, error) {
 	}
 
 	// reset the memtable
-	s.data = make(map[string]string, s.size)
+	s.data = make(map[string]Metadata, s.size)
 	s.offset = s.offset + 1
 
 	return true, nil
@@ -166,9 +185,9 @@ func (s *Store) Get(key string) (string, error) {
 
 	key = strings.ToLower(key)
 
-	val, ok := s.data[key]
+	metadata, ok := s.data[key]
 	if ok {
-		return val, nil
+		return metadata.Val, nil
 	}
 
 	var c = s.offset
@@ -178,7 +197,7 @@ func (s *Store) Get(key string) (string, error) {
 			return constants.EMPTYSTRING, err
 		}
 
-		val, err = sstable.Read(key)
+		val, err := sstable.Read(key)
 		if err != nil && err.Error() != constants.ERRNOTFOUND {
 			return constants.EMPTYSTRING, err
 		}
@@ -191,4 +210,13 @@ func (s *Store) Get(key string) (string, error) {
 	}
 
 	return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
+}
+
+func (s *Store) Delete(key string) (bool, error) {
+	val, err := s.Get(key)
+	if err != nil {
+		return false, err
+	}
+
+	return s.Put(key, val, true)
 }

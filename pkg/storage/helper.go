@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"monk-db/pkg/constants"
+	"monk-db/pkg/sstable"
 	"monk-db/pkg/utils"
 	"os"
 	"strconv"
@@ -16,7 +17,7 @@ import (
 func loadFromWalFile(
 	walFile *utils.File,
 	size int,
-	dataChan chan map[string]string,
+	dataChan chan map[string]Metadata,
 	errorChan chan error,
 	wg *sync.WaitGroup,
 ) {
@@ -29,7 +30,7 @@ func loadFromWalFile(
 		return
 	}
 
-	var data = make(map[string]string, size)
+	var data = make(map[string]Metadata, size)
 
 	var walFileStr = string(walFileBytes)
 	if len(walFileStr) == 0 {
@@ -59,8 +60,18 @@ func loadFromWalFile(
 			return
 		}
 
-		if strings.EqualFold(walRecord.Operation, constants.PUT) {
-			data[walRecord.Key] = walRecord.Value
+		switch walRecord.Operation {
+		case constants.PUT:
+			data[walRecord.Key] = Metadata{
+				Key: walRecord.Key,
+				Val: walRecord.Value,
+			}
+		case constants.GET:
+			data[walRecord.Key] = Metadata{
+				Key:       walRecord.Key,
+				Val:       walRecord.Value,
+				isDeleted: true,
+			}
 		}
 	}
 
@@ -159,4 +170,17 @@ func getOffsetFromManifestFile(fileContentStr string, fileContentPart []string) 
 	}
 
 	return counterInt, nil
+}
+
+func convertToSSTableDataFormat(data map[string]Metadata) []sstable.Record {
+	var sstableRecords = make([]sstable.Record, 0, len(data))
+	for key, metadata := range data {
+		sstableRecords = append(sstableRecords, sstable.Record{
+			Key:       key,
+			Value:     metadata.Val,
+			IsDeleted: metadata.isDeleted,
+		})
+	}
+
+	return sstableRecords
 }

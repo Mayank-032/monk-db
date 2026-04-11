@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	utils.NewLRUCache(6)
+	utils.NewLRUCache(10)
 	log.Println("cache init success")
 
 	_, filename, _, _ := runtime.Caller(0)
@@ -50,7 +50,7 @@ func main() {
 	}
 	log.Printf("memtable init success, total initialization time taken: %v ms\n", initStoreTimeDuration)
 
-	buffer, err := utils.ParseFile("./put.txt")
+	buffer, err := utils.ParseFile("./put-delete.txt")
 	if err != nil {
 		log.Println("unable to parse file; err: ", err.Error())
 		os.Exit(1)
@@ -65,16 +65,21 @@ func main() {
 		// GET OPERATIONS
 		totalGetTimeInMs   = 0
 		totalGetOperations = 0
+
+		// DELETE OPERATIONS
+		totalDeleteTimeInMs   = 0
+		totalDeleteOperations = 0
 	)
 
 	startTime := time.Now()
 	for index, block := range buffer {
-		if strings.EqualFold(block[0], constants.PUT) {
+		switch strings.ToUpper(block[0]) {
+		case constants.PUT:
 			key := block[1]
 			val := block[2]
 
 			putStartTime := time.Now()
-			success, err := store.Put(key, val)
+			success, err := store.Put(key, val, false)
 			totalTimeTakenInMs := time.Since(putStartTime).Milliseconds()
 			totalPutTimeInMs = totalPutTimeInMs + int(totalTimeTakenInMs)
 			totalPutOperations = totalPutOperations + 1
@@ -91,10 +96,7 @@ func main() {
 			}
 
 			// log.Printf("PUT OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
-			continue
-		}
-
-		if strings.EqualFold(block[0], constants.GET) {
+		case constants.GET:
 			key := block[1]
 			expectedVal := block[2]
 
@@ -113,20 +115,47 @@ func main() {
 			if res != expectedVal {
 				log.Printf("INVALID GET OPERATION with index: %v, for key: %v\n", index, key)
 				os.Exit(1)
+				return
 			}
 
 			// log.Printf("GET OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
-			continue
-		}
+		case constants.DELETE:
+			key := block[1]
 
+			deleteStartTime := time.Now()
+			success, err := store.Delete(key)
+			totalTimeTakenInMs := time.Since(deleteStartTime).Milliseconds()
+			totalDeleteTimeInMs = totalDeleteTimeInMs + int(totalTimeTakenInMs)
+			totalDeleteOperations = totalDeleteOperations + 1
+
+			if err != nil && err.Error() != constants.ERRNOTFOUND {
+				log.Printf("DELETE OPERATION with index: %v, for key: %v, failed with err: %v\n", index, key, err.Error())
+				os.Exit(1)
+				return
+			}
+			if !success {
+				log.Printf("INVALID DELETE OPERATION with index: %v, for key: %v\n", index, key)
+				os.Exit(1)
+				return
+			}
+
+			// log.Printf("DELETE OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
+		default:
+			log.Println("invalid operation")
+			os.Exit(1)
+			return
+		}
 	}
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()
 
 	var avgTimeTakenForPutOperationsInMs = float64(totalPutTimeInMs) / float64(totalPutOperations)
 	var avgTimeTakenForGetOperationsInMs = float64(totalGetTimeInMs) / float64(totalGetOperations)
+	var avgTimeTakenForDeleteOperationsInMs = float64(totalDeleteTimeInMs) / float64(totalDeleteOperations)
 
 	log.Printf("Avg. time taken for all PUT operations: %v ms\n", avgTimeTakenForPutOperationsInMs)
 	log.Printf("Avg. time taken for all GET operations: %v ms\n", avgTimeTakenForGetOperationsInMs)
+	log.Printf("Avg. time taken for all DELETE operations: %v ms\n", avgTimeTakenForDeleteOperationsInMs)
+
 	log.Printf("total time taken for all 30k combined operations: %v ms\n", totalTimeTakenInMs)
 
 	os.Exit(0)
