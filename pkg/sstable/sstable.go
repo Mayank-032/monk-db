@@ -127,23 +127,28 @@ func (sst *ssTable) Read(key string) (string, error) {
 		records, ok := val.([]Record)
 		if ok {
 			for _, r := range records {
+				if r.IsDeleted {
+					return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
+				}
+
 				if r.Key == key {
 					return r.Value, nil
 				}
 			}
-			return "", nil
+
+			return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
 		}
 	}
 
 	if err != nil && err.Error() != constants.ERRNOTFOUND {
 		log.Println("unable to check from cache with err: ", err.Error())
-		return "", errors.New("unable to check from cache")
+		return constants.EMPTYSTRING, errors.New("unable to check from cache")
 	}
 
 	contentBytes, err := sst.file.Read()
 	if err != nil {
 		log.Println("read file content error: ", err.Error())
-		return "", errors.New("unable to read file")
+		return constants.EMPTYSTRING, errors.New("unable to read file")
 	}
 
 	var records = make([]Record, 0)
@@ -155,7 +160,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 		fmt.Println("sst-file-fullpath: ", sst.file.GetFileFullPath())
 
 		log.Println("unmarshal file content err: ", err.Error())
-		return "", errors.New("unable to read file")
+		return constants.EMPTYSTRING, errors.New("unable to read file")
 	}
 	utils.Cache.PUT(sst.file.GetName(), records)
 
@@ -165,5 +170,5 @@ func (sst *ssTable) Read(key string) (string, error) {
 		}
 	}
 
-	return "", nil
+	return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
 }

@@ -178,6 +178,15 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 	return true, nil
 }
 
+func (s *Store) Delete(key string) (bool, error) {
+	val, err := s.Get(key)
+	if err != nil {
+		return false, err
+	}
+
+	return s.Put(key, val, true)
+}
+
 func (s *Store) Get(key string) (string, error) {
 	if s == nil || s.data == nil {
 		return constants.EMPTYSTRING, errors.New(constants.ERRORSTORAGENOTINITIALIZED)
@@ -187,6 +196,10 @@ func (s *Store) Get(key string) (string, error) {
 
 	metadata, ok := s.data[key]
 	if ok {
+		if metadata.isDeleted {
+			return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
+		}
+
 		return metadata.Val, nil
 	}
 
@@ -198,8 +211,12 @@ func (s *Store) Get(key string) (string, error) {
 		}
 
 		val, err := sstable.Read(key)
-		if err != nil && err.Error() != constants.ERRNOTFOUND {
-			return constants.EMPTYSTRING, err
+		if err != nil {
+			if err.Error() != constants.ERRNOTFOUND {
+				return constants.EMPTYSTRING, err
+			}
+
+			return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
 		}
 
 		if len(val) > 0 {
@@ -210,13 +227,4 @@ func (s *Store) Get(key string) (string, error) {
 	}
 
 	return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
-}
-
-func (s *Store) Delete(key string) (bool, error) {
-	val, err := s.Get(key)
-	if err != nil {
-		return false, err
-	}
-
-	return s.Put(key, val, true)
 }

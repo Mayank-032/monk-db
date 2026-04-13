@@ -72,6 +72,12 @@ func loadFromWalFile(
 				Val:       walRecord.Value,
 				isDeleted: true,
 			}
+		case constants.DELETE:
+			data[walRecord.Key] = Metadata{
+				Key:       walRecord.Key,
+				Val:       walRecord.Value,
+				isDeleted: true,
+			}
 		}
 	}
 
