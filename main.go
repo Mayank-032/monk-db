@@ -69,6 +69,8 @@ func main() {
 		// DELETE OPERATIONS
 		totalDeleteTimeInMs   = 0
 		totalDeleteOperations = 0
+
+		totalUpdateOperations = 0
 	)
 
 	startTime := time.Now()
@@ -94,6 +96,8 @@ func main() {
 				os.Exit(1)
 				return
 			}
+
+			totalUpdateOperations = totalUpdateOperations + 1
 
 			// log.Printf("PUT OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
 		case constants.GET:
@@ -139,11 +143,21 @@ func main() {
 				return
 			}
 
+			totalUpdateOperations = totalUpdateOperations + 1
+
 			// log.Printf("DELETE OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
 		default:
 			log.Println("invalid operation")
 			os.Exit(1)
 			return
+		}
+
+		// For every 10,000 requests completion, trigger compaction
+		if totalUpdateOperations == 10000 {
+			// trigger compaction
+			
+			// reset counter
+			totalUpdateOperations = 0
 		}
 	}
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()

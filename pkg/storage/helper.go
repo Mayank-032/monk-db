@@ -150,9 +150,6 @@ func handleDanglingFileAndGetOffset(
 }
 
 func getOffsetFromManifestFile(fileContentStr string, fileContentPart []string) (int, error) {
-	fmt.Println("fileContentPart: ", fileContentPart)
-	fmt.Println("fileContentSize: ", len(fileContentPart))
-
 	var lastLineContent = fileContentPart[len(fileContentPart)-2]
 	if lastLineContent == fileContentStr {
 		return 0, nil

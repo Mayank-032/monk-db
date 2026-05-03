@@ -151,7 +151,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 		return constants.EMPTYSTRING, errors.New("unable to read file")
 	}
 
-	var records = make([]Record, 0)
+	records, err := readRecordsFileData(sst.file)
 	err = json.Unmarshal(contentBytes, &records)
 	if err != nil {
 		fmt.Println("contentBytes: ", string(contentBytes))
@@ -171,4 +171,40 @@ func (sst *ssTable) Read(key string) (string, error) {
 	}
 
 	return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
+}
+
+// This optimizes the sstable storage and returns the latest offset
+// TODO: We gonna optimize after init implementation
+func (sst *ssTable) Optimize() (int, error) {
+	/* 1) Let's start with fetching all the data in-memory at once */
+	
+	// Read Manifest File to get the list of existing files
+	var manifestFile = utils.NewFile(manifestFileName, manifestLogFilePath)
+	files, err := readManifestFileData(manifestFile)
+	if err != nil {
+		log.Println("unable to read manifest file with err: ", err.Error())
+		return -1, errors.New("unable to read file")
+	}
+
+	var list = make([][]Record, 0)
+	for _, fileName := range files {
+		var file = utils.NewFile(fileName, ssTableRecordsDirPath)
+		records, err := readRecordsFileData(file)
+		if err != nil {
+			log.Println("unable to records of the file with err: ", err.Error())
+			return 0, errors.New("unable to read records")
+		}
+
+		list = append(list, records)
+	}
+
+	/* 2) Perform merge k-sorted-list algorithm. */
+
+	// For now if the file exceeds the limit of 2000 not an issue
+	
+
+	// 3) calculate the new offset
+
+
+	return 0, nil
 }
