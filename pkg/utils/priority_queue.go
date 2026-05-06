@@ -62,11 +62,15 @@ func (pq *PriorityQueue[T]) Peek() (T, error) {
 }
 
 func (pq *PriorityQueue[T]) upHeapify(idx int) {
-	if idx < 0 || idx >= len(pq.data) {
+	if idx < 0 || idx >= pq.Size() {
 		return
 	}
 
 	var parentIdx = (idx - 1) / 2
+
+	if parentIdx < 0 || parentIdx >= pq.Size() {
+		return
+	}
 
 	if !pq.comp(pq.data[idx], pq.data[parentIdx]) {
 		return
@@ -80,23 +84,32 @@ func (pq *PriorityQueue[T]) upHeapify(idx int) {
 }
 
 func (pq *PriorityQueue[T]) downHeapify(idx int) {
-	if idx < 0 || idx >= len(pq.data) {
+	if idx < 0 || idx >= pq.Size() {
 		return
 	}
 
 	var lChildIdx int = 2*idx + 1
 	var rChildIdx int = 2*idx + 2
-	if pq.comp(pq.data[idx], pq.data[lChildIdx]) && pq.comp(pq.data[idx], pq.data[rChildIdx]) {
+
+	if (lChildIdx < 0 || lChildIdx >= pq.Size()) && (rChildIdx < 0 || rChildIdx >= pq.Size()) {
 		return
+	} else if !(lChildIdx < 0 || lChildIdx >= pq.Size()) && (rChildIdx < 0 || rChildIdx >= pq.Size()) {
+		if pq.comp(pq.data[idx], pq.data[lChildIdx]) {
+			return
+		}
+	} else {
+		if pq.comp(pq.data[idx], pq.data[rChildIdx]) {
+			return
+		}
 	}
 
 	var temp = pq.data[idx]
-	if pq.comp(pq.data[idx], pq.data[lChildIdx]) {
+	if lChildIdx >= 0 && lChildIdx < pq.Size() && pq.comp(pq.data[idx], pq.data[lChildIdx]) {
 		pq.data[idx] = pq.data[lChildIdx]
 		pq.data[lChildIdx] = temp
 
 		pq.downHeapify(lChildIdx)
-	} else {
+	} else if rChildIdx >= 0 && rChildIdx < pq.Size() {
 		pq.data[idx] = pq.data[rChildIdx]
 		pq.data[rChildIdx] = temp
 
@@ -106,4 +119,12 @@ func (pq *PriorityQueue[T]) downHeapify(idx int) {
 
 func (pq *PriorityQueue[T]) Size() int {
 	return len(pq.data)
+}
+
+func (pq *PriorityQueue[T]) IsEmpty() bool {
+	if len(pq.data) == 0 {
+		return true
+	}
+
+	return false
 }

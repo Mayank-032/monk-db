@@ -5,3 +5,9 @@ type Record struct {
 	Value     string
 	IsDeleted bool
 }
+
+type Pair struct {
+	record  Record
+	listIdx int
+	idx     int
+}

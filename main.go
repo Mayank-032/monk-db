@@ -71,6 +71,10 @@ func main() {
 		totalDeleteOperations = 0
 
 		totalUpdateOperations = 0
+
+		// Compact Operation
+		totalCompactTimeInMs   = 0
+		totalCompactOperations = 0
 	)
 
 	startTime := time.Now()
@@ -117,6 +121,7 @@ func main() {
 			}
 
 			if res != expectedVal {
+				log.Printf("actual_val: %v, expected_val: %v\n", res, expectedVal)
 				log.Printf("INVALID GET OPERATION with index: %v, for key: %v\n", index, key)
 				os.Exit(1)
 				return
@@ -155,7 +160,12 @@ func main() {
 		// For every 10,000 requests completion, trigger compaction
 		if totalUpdateOperations == 10000 {
 			// trigger compaction
-			
+			var compactionStartTime = time.Now()
+			sstable.Optimize()
+			var totalTimeTakenInMs = time.Since(compactionStartTime).Milliseconds()
+			totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
+			totalCompactOperations = totalCompactOperations + 1
+
 			// reset counter
 			totalUpdateOperations = 0
 		}
@@ -165,10 +175,12 @@ func main() {
 	var avgTimeTakenForPutOperationsInMs = float64(totalPutTimeInMs) / float64(totalPutOperations)
 	var avgTimeTakenForGetOperationsInMs = float64(totalGetTimeInMs) / float64(totalGetOperations)
 	var avgTimeTakenForDeleteOperationsInMs = float64(totalDeleteTimeInMs) / float64(totalDeleteOperations)
+	var avgTimeTakenForCompactOperationsInMs = float64(totalCompactTimeInMs) / float64(totalCompactOperations)
 
 	log.Printf("Avg. time taken for all PUT operations: %v ms\n", avgTimeTakenForPutOperationsInMs)
 	log.Printf("Avg. time taken for all GET operations: %v ms\n", avgTimeTakenForGetOperationsInMs)
 	log.Printf("Avg. time taken for all DELETE operations: %v ms\n", avgTimeTakenForDeleteOperationsInMs)
+	log.Printf("Avg. time take for all COMPACT operations: %v ms\n", avgTimeTakenForCompactOperationsInMs)
 
 	log.Printf("total time taken for all 30k combined operations: %v ms\n", totalTimeTakenInMs)
 

@@ -68,13 +68,14 @@ func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
 	var errorChan = make(chan error, 2)
 	var wg sync.WaitGroup
 
-	wg.Add(1)
 	// 2.1 load data from wal file
+	wg.Add(1)
 	go loadFromWalFile(walFile, size, dataChan, errorChan, &wg)
 
 	var offsetChan = make(chan int, 1)
-	wg.Add(1)
+
 	// 2.2 handle dangling files on disk
+	wg.Add(1)
 	go handleDanglingFileAndGetOffset(sstable.GetManifestLogfileMetadata(), sstable.GetRecordDirMetadata(), offsetChan, errorChan, &wg)
 
 	go func() {
@@ -216,7 +217,8 @@ func (s *Store) Get(key string) (string, error) {
 				return constants.EMPTYSTRING, err
 			}
 
-			return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
+			c--
+			continue
 		}
 
 		if len(val) > 0 {

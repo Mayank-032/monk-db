@@ -127,7 +127,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 		records, ok := val.([]Record)
 		if ok {
 			for _, r := range records {
-				if r.IsDeleted {
+				if r.Key == key && r.IsDeleted {
 					return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
 				}
 
@@ -175,9 +175,9 @@ func (sst *ssTable) Read(key string) (string, error) {
 
 // This optimizes the sstable storage and returns the latest offset
 // TODO: We gonna optimize after init implementation
-func (sst *ssTable) Optimize() (int, error) {
+func Optimize() (int, error) {
 	/* 1) Let's start with fetching all the data in-memory at once */
-	
+
 	// Read Manifest File to get the list of existing files
 	var manifestFile = utils.NewFile(manifestFileName, manifestLogFilePath)
 	files, err := readManifestFileData(manifestFile)
@@ -199,12 +199,65 @@ func (sst *ssTable) Optimize() (int, error) {
 	}
 
 	/* 2) Perform merge k-sorted-list algorithm. */
+	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) bool {
+		var val1 string = p1.record.Key
+		var val2 string = p2.record.Key
+
+		if val1 < val2 {
+			return true
+		}
+
+		return false
+	})
+
+	for i, record := range list {
+		pq.Push(Pair{
+			record:  record[0],
+			listIdx: i,
+			idx:     0,
+		})
+	}
+
+	var finalRecord = make([]Record, 0)
+	for !pq.IsEmpty() {
+		var p, err = pq.Pop()
+		if err != nil {
+			return -1, err
+		}
+
+		finalRecord = append(finalRecord, p.record)
+
+		if p.idx+1 >= len(list[p.listIdx]) {
+			continue
+		}
+
+		var newP = Pair{
+			record:  list[p.listIdx][p.idx+1],
+			listIdx: p.listIdx,
+			idx:     p.idx + 1,
+		}
+		pq.Push(newP)
+	}
+
+	finalRecordB, err := json.MarshalIndent(finalRecord, constants.EMPTYSTRING, constants.MARSHALSPACING)
+	if err != nil {
+		log.Printf("marshal records err: %v\n", err.Error())
+		return -1, errors.New("unable to marshal records while compaction")
+	}
 
 	// For now if the file exceeds the limit of 2000 not an issue
-	
+	var newFile = utils.NewFile("compacted", ssTableRecordsDirPath)
+	if err = newFile.Create(utils.CREATE, true); err != nil {
+		log.Printf("create compact file err: %v\n", err.Error())
+		return -1, errors.New("unable to create compact record file")
+	}
+
+	if err = newFile.Write(finalRecordB, utils.WRITEONLY, true); err != nil {
+		log.Printf("write compact file err: %v\n", err.Error())
+		return -1, errors.New("unable to compact records")
+	}
 
 	// 3) calculate the new offset
-
 
 	return 0, nil
 }
