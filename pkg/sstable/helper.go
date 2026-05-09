@@ -22,7 +22,7 @@ func readManifestFileData(manifestFile *utils.File) ([]string, error) {
 		return nil, err
 	}
 
-	return fileContentPart[:len(fileContentPart)-2], nil
+	return fileContentPart[:len(fileContentPart)-1], nil
 }
 
 func readRecordsFileData(file *utils.File) ([]Record, error) {

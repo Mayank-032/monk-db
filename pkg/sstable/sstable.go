@@ -199,24 +199,34 @@ func Optimize() (int, error) {
 	}
 
 	/* 2) Perform merge k-sorted-list algorithm. */
-	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) bool {
+	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) (comp, equal bool) {
 		var val1 string = p1.record.Key
 		var val2 string = p2.record.Key
 
-		if val1 < val2 {
-			return true
+		if val1 <= val2 {
+			if val1 == val2 {
+				return true, true
+			}
+
+			return true, false
 		}
 
-		return false
+		return false, false
 	})
 
+	fmt.Println("len: ", len(list))
 	for i, record := range list {
 		pq.Push(Pair{
 			record:  record[0],
 			listIdx: i,
 			idx:     0,
 		})
+
+		// data := pq.GetData()
+		// fmt.Println("data: ", data)
 	}
+
+	// os.Exit(1)
 
 	var finalRecord = make([]Record, 0)
 	for !pq.IsEmpty() {
@@ -246,7 +256,7 @@ func Optimize() (int, error) {
 	}
 
 	// For now if the file exceeds the limit of 2000 not an issue
-	var newFile = utils.NewFile("compacted", ssTableRecordsDirPath)
+	var newFile = utils.NewFile("compacted.json", ssTableRecordsDirPath)
 	if err = newFile.Create(utils.CREATE, true); err != nil {
 		log.Printf("create compact file err: %v\n", err.Error())
 		return -1, errors.New("unable to create compact record file")
