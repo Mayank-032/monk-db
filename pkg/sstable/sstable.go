@@ -9,6 +9,8 @@ import (
 	"monk-db/pkg/utils"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 var (
@@ -255,8 +257,27 @@ func Optimize() (int, error) {
 		return -1, errors.New("unable to marshal records while compaction")
 	}
 
+	// 3) calculate the new offset
+	lastFile := files[len(files)-1]
+	fileParts := strings.Split(lastFile, ".")
+	if len(fileParts) < 1 {
+		return -1, errors.New("invalid file format")
+	}
+
+	fileName := fileParts[0]
+	fileNameParts := strings.Split(fileName, "-")
+	if len(fileParts) < 2 {
+		return -1, errors.New("invalid filename format")
+	}
+
+	lastOffset, err := strconv.Atoi(fileNameParts[1])
+	if err != nil {
+		return -1, errors.New("unable to convert offset to int")
+	}
+
 	// For now if the file exceeds the limit of 2000 not an issue
-	var newFile = utils.NewFile("compacted.json", ssTableRecordsDirPath)
+	var newFileName = fmt.Sprintf("sst-%d.json", (lastOffset + 1))
+	var newFile = utils.NewFile(newFileName, ssTableRecordsDirPath)
 	if err = newFile.Create(utils.CREATE, true); err != nil {
 		log.Printf("create compact file err: %v\n", err.Error())
 		return -1, errors.New("unable to create compact record file")
@@ -267,7 +288,11 @@ func Optimize() (int, error) {
 		return -1, errors.New("unable to compact records")
 	}
 
-	// 3) calculate the new offset
+	err = manifestFile.AppendWithTmpFile([]byte(newFileName))
+	if err != nil {
+		log.Println("unable to write content in manifest-log file")
+		return -1, errors.New("unable to flush records")
+	}
 
-	return 0, nil
+	return lastOffset + 1, nil
 }

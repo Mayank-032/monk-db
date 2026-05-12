@@ -230,3 +230,7 @@ func (s *Store) Get(key string) (string, error) {
 
 	return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
 }
+
+func (s *Store) UpdateOffset(newOffset int) {
+	s.offset = newOffset
+}

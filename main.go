@@ -161,10 +161,17 @@ func main() {
 		if totalUpdateOperations == 10000 {
 			// trigger compaction
 			var compactionStartTime = time.Now()
-			sstable.Optimize()
+			newOffset, err := sstable.Optimize()
 			var totalTimeTakenInMs = time.Since(compactionStartTime).Milliseconds()
 			totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
 			totalCompactOperations = totalCompactOperations + 1
+
+			if err != nil {
+				log.Printf("OPTIMIZE OPERATION failed with err: %v\n", err.Error())
+				os.Exit(1)
+			}
+
+			store.UpdateOffset(newOffset)
 
 			// reset counter
 			totalUpdateOperations = 0
