@@ -52,6 +52,7 @@ func (pq *PriorityQueue[T]) Pop() (T, error) {
 		return val, nil
 	}
 
+	val = pq.data[0]
 	pq.Swap(0, len(pq.data)-1)
 	pq.data = pq.data[:len(pq.data)-1]
 
@@ -116,13 +117,29 @@ func (pq *PriorityQueue[T]) downHeapify(idx int) {
 
 		pq.Swap(idx, lChildIdx)
 		pq.downHeapify(lChildIdx)
-	} else {
+	} else if (lChildIdx < 0 || lChildIdx >= pq.Size()) && !(rChildIdx < 0 || rChildIdx >= pq.Size()) {
 		if comp := pq.comp(pq.data[idx], pq.data[rChildIdx]); comp {
 			return
 		}
 
 		pq.Swap(idx, rChildIdx)
 		pq.downHeapify(rChildIdx)
+	} else {
+		var swapIdx = idx
+		if lChildIdx < pq.Size() && pq.comp(pq.data[lChildIdx], pq.data[swapIdx]) {
+			swapIdx = lChildIdx
+		}
+
+		if rChildIdx < pq.Size() && pq.comp(pq.data[rChildIdx], pq.data[swapIdx]) {
+			swapIdx = rChildIdx
+		}
+
+		if swapIdx == idx {
+			return
+		}
+
+		pq.Swap(idx, swapIdx)
+		pq.downHeapify(swapIdx)
 	}
 }
 

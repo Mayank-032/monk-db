@@ -84,6 +84,9 @@ func NewSSTable(count int, operation string) (*ssTable, error) {
 
 // it will convert to respective data structure and flush it to the log file
 func (sst *ssTable) Flush(sstableRecords []Record) error {
+	log.Println("[FLUSH START]")
+	log.Println()
+
 	if sst == nil {
 		return errors.New("sstable is not initialized")
 	}
@@ -120,6 +123,9 @@ func (sst *ssTable) Flush(sstableRecords []Record) error {
 }
 
 func (sst *ssTable) Read(key string) (string, error) {
+	log.Println("[SST-READ START]")
+	log.Println()
+
 	if sst == nil {
 		return "", errors.New("sstable is not initialized")
 	}
@@ -154,6 +160,11 @@ func (sst *ssTable) Read(key string) (string, error) {
 	}
 
 	records, err := readRecordsFileData(sst.file)
+	if err != nil {
+		log.Println("unable to read records error: ", err.Error())
+		return constants.EMPTYSTRING, errors.New("unable to read records")
+	}
+
 	err = json.Unmarshal(contentBytes, &records)
 	if err != nil {
 		fmt.Println("contentBytes: ", string(contentBytes))
@@ -167,16 +178,23 @@ func (sst *ssTable) Read(key string) (string, error) {
 	utils.Cache.PUT(sst.file.GetName(), records)
 
 	for _, r := range records {
-		if r.Key == key && !r.IsDeleted {
-			return r.Value, nil
+		if r.Key == key {
+			if !r.IsDeleted {
+				return r.Value, nil
+			}
+
+			return constants.EMPTYSTRING, errors.New(constants.ERRRESOURCEREMOVED)
 		}
 	}
 
-	return constants.EMPTYSTRING, errors.New(constants.ERRRESOURCEREMOVED)
+	return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
 }
 
 // This optimizes the sstable storage and returns the latest offset
 func Optimize() (int, error) {
+	log.Println("[OPTIMIZE START]")
+	log.Println()
+
 	/* 1) Let's start with fetching all the data in-memory at once */
 
 	// Read Manifest File to get the list of existing files
@@ -186,6 +204,7 @@ func Optimize() (int, error) {
 		log.Println("unable to read manifest file with err: ", err.Error())
 		return -1, errors.New("unable to read file")
 	}
+	log.Println("read all files")
 
 	var list = make([][]Record, 0)
 	for _, fileName := range files {
@@ -198,6 +217,7 @@ func Optimize() (int, error) {
 
 		list = append(list, records)
 	}
+	log.Println("unmarshalled all files")
 
 	/* 2) Perform merge k-sorted-list algorithm. */
 	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) (comp bool) {
@@ -212,16 +232,12 @@ func Optimize() (int, error) {
 			if p1.listIdx > p2.listIdx {
 				return true
 			}
-
-			if p1.listIdx == p2.listIdx && p1.idx < p2.idx {
-				return true
-			}
 		}
 
 		return false
 	})
+	log.Println("created priority queue")
 
-	fmt.Println("len: ", len(list))
 	for i, record := range list {
 		pq.Push(Pair{
 			record:  record[0],
@@ -232,8 +248,7 @@ func Optimize() (int, error) {
 		// data := pq.GetData()
 		// fmt.Println("data: ", data)
 	}
-
-	// os.Exit(1)
+	log.Println("added first elements priority queue from all files")
 
 	var finalRecord = make([]Record, 0)
 	for !pq.IsEmpty() {
@@ -250,19 +265,19 @@ func Optimize() (int, error) {
 			}
 
 			if p.record.Key == topEle.record.Key {
-				drainedEle, err := pq.Pop()
+				topEle, err = pq.Pop()
 				if err != nil {
 					return -1, err
 				}
 
-				if drainedEle.idx+1 >= len(list[drainedEle.listIdx]) {
+				if topEle.idx+1 >= len(list[topEle.listIdx]) {
 					continue
 				}
 
 				var newP = Pair{
-					record:  list[drainedEle.listIdx][drainedEle.idx+1],
-					listIdx: drainedEle.listIdx,
-					idx:     drainedEle.idx + 1,
+					record:  list[topEle.listIdx][topEle.idx+1],
+					listIdx: topEle.listIdx,
+					idx:     topEle.idx + 1,
 				}
 				pq.Push(newP)
 
@@ -289,12 +304,14 @@ func Optimize() (int, error) {
 		}
 		pq.Push(newP)
 	}
+	log.Println("priority queue processing finished")
 
 	finalRecordB, err := json.MarshalIndent(finalRecord, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
 		log.Printf("marshal records err: %v\n", err.Error())
 		return -1, errors.New("unable to marshal records while compaction")
 	}
+	log.Println("marshalled final records")
 
 	// 3) calculate the new offset
 	lastFile := files[len(files)-1]
@@ -313,6 +330,7 @@ func Optimize() (int, error) {
 	if err != nil {
 		return -1, errors.New("unable to convert offset to int")
 	}
+	log.Println("calculate new offset")
 
 	// For now if the file exceeds the limit of 2000 not an issue
 	var newFileName = fmt.Sprintf("sst-%d.json", (lastOffset + 1))
@@ -326,14 +344,16 @@ func Optimize() (int, error) {
 		log.Printf("write compact file err: %v\n", err.Error())
 		return -1, errors.New("unable to compact records")
 	}
+	log.Println("file created with final records")
 
 	// overwrite the manifest file with new data
 	if err = manifestFile.AppendWithTmpFile([]byte(newFileName), true); err != nil {
 		log.Println("unable to write content in manifest-log file")
 		return -1, errors.New("unable to flush records")
 	}
+	log.Println("overwrite the manifest file")
 
-	// cleanup invalid files
+	// cleanup stale files
 	for _, fileName := range files {
 		var file = utils.NewFile(fileName, ssTableRecordsDirPath)
 		if err = file.Remove(); err != nil {
@@ -341,6 +361,10 @@ func Optimize() (int, error) {
 			return 0, errors.New("unable to read records")
 		}
 	}
+	log.Println("cleanup the stale files")
+	log.Println("optimized_file_offset: ", (lastOffset + 1))
 
 	return lastOffset + 1, nil
 }
+
+// euelf

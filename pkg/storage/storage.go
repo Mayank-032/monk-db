@@ -39,10 +39,11 @@ type Metadata struct {
 }
 
 type Store struct {
-	data    map[string]Metadata
-	walFile *utils.File
-	offset  int
-	size    int
+	data       map[string]Metadata
+	walFile    *utils.File
+	lastOffset int
+	offset     int
+	size       int
 }
 
 type WalRecord struct {
@@ -109,6 +110,8 @@ func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
 }
 
 func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
+	log.Println("[PUT START] - ", key)
+
 	if s == nil || s.data == nil {
 		return false, errors.New(constants.ERRORSTORAGENOTINITIALIZED)
 	}
@@ -180,6 +183,8 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 }
 
 func (s *Store) Delete(key string) (bool, error) {
+	log.Println("[DELETE START] - ", key)
+
 	val, err := s.Get(key)
 	if err != nil {
 		return false, err
@@ -189,6 +194,8 @@ func (s *Store) Delete(key string) (bool, error) {
 }
 
 func (s *Store) Get(key string) (string, error) {
+	log.Println("[GET START] - ", key)
+
 	if s == nil || s.data == nil {
 		return constants.EMPTYSTRING, errors.New(constants.ERRORSTORAGENOTINITIALIZED)
 	}
@@ -205,7 +212,7 @@ func (s *Store) Get(key string) (string, error) {
 	}
 
 	var c = s.offset
-	for c > 0 {
+	for c > s.lastOffset {
 		sstable, err := sstable.NewSSTable(c, constants.READ)
 		if err != nil {
 			return constants.EMPTYSTRING, err
@@ -213,12 +220,12 @@ func (s *Store) Get(key string) (string, error) {
 
 		val, err := sstable.Read(key)
 		if err != nil {
-			if err.Error() != constants.ERRNOTFOUND {
-				return constants.EMPTYSTRING, err
-			}
-
 			if err.Error() == constants.ERRRESOURCEREMOVED {
 				return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
+			}
+
+			if err.Error() != constants.ERRNOTFOUND {
+				return constants.EMPTYSTRING, err
 			}
 
 			c--
@@ -236,5 +243,6 @@ func (s *Store) Get(key string) (string, error) {
 }
 
 func (s *Store) UpdateOffset(newOffset int) {
+	s.lastOffset = s.offset
 	s.offset = newOffset
 }
