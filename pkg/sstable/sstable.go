@@ -110,7 +110,7 @@ func (sst *ssTable) Flush(sstableRecords []Record) error {
 		return err
 	}
 
-	err = manifestFile.AppendWithTmpFile([]byte(sst.file.GetName()))
+	err = manifestFile.AppendWithTmpFile([]byte(sst.file.GetName()), false)
 	if err != nil {
 		log.Println("unable to write content in manifest-log file")
 		return errors.New("unable to flush records")
@@ -130,7 +130,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 		if ok {
 			for _, r := range records {
 				if r.Key == key && r.IsDeleted {
-					return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
+					return constants.EMPTYSTRING, errors.New(constants.ERRRESOURCEREMOVED)
 				}
 
 				if r.Key == key {
@@ -167,16 +167,15 @@ func (sst *ssTable) Read(key string) (string, error) {
 	utils.Cache.PUT(sst.file.GetName(), records)
 
 	for _, r := range records {
-		if r.Key == key {
+		if r.Key == key && !r.IsDeleted {
 			return r.Value, nil
 		}
 	}
 
-	return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
+	return constants.EMPTYSTRING, errors.New(constants.ERRRESOURCEREMOVED)
 }
 
 // This optimizes the sstable storage and returns the latest offset
-// TODO: We gonna optimize after init implementation
 func Optimize() (int, error) {
 	/* 1) Let's start with fetching all the data in-memory at once */
 
@@ -201,19 +200,25 @@ func Optimize() (int, error) {
 	}
 
 	/* 2) Perform merge k-sorted-list algorithm. */
-	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) (comp, equal bool) {
+	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) (comp bool) {
 		var val1 string = p1.record.Key
 		var val2 string = p2.record.Key
 
-		if val1 <= val2 {
-			if val1 == val2 {
-				return true, true
-			}
-
-			return true, false
+		if val1 < val2 {
+			return true
 		}
 
-		return false, false
+		if val1 == val2 {
+			if p1.listIdx > p2.listIdx {
+				return true
+			}
+
+			if p1.listIdx == p2.listIdx && p1.idx < p2.idx {
+				return true
+			}
+		}
+
+		return false
 	})
 
 	fmt.Println("len: ", len(list))
@@ -237,8 +242,42 @@ func Optimize() (int, error) {
 			return -1, err
 		}
 
-		finalRecord = append(finalRecord, p.record)
+		// remove the remaining elements
+		for !pq.IsEmpty() {
+			var topEle, err = pq.Peek()
+			if err != nil {
+				return -1, err
+			}
 
+			if p.record.Key == topEle.record.Key {
+				drainedEle, err := pq.Pop()
+				if err != nil {
+					return -1, err
+				}
+
+				if drainedEle.idx+1 >= len(list[drainedEle.listIdx]) {
+					continue
+				}
+
+				var newP = Pair{
+					record:  list[drainedEle.listIdx][drainedEle.idx+1],
+					listIdx: drainedEle.listIdx,
+					idx:     drainedEle.idx + 1,
+				}
+				pq.Push(newP)
+
+				continue
+			}
+
+			break
+		}
+
+		// append in current final list
+		if !p.record.IsDeleted {
+			finalRecord = append(finalRecord, p.record)
+		}
+
+		// if for current list the elements are over.. pop another element, as no point of moving further
 		if p.idx+1 >= len(list[p.listIdx]) {
 			continue
 		}
@@ -288,10 +327,19 @@ func Optimize() (int, error) {
 		return -1, errors.New("unable to compact records")
 	}
 
-	err = manifestFile.AppendWithTmpFile([]byte(newFileName))
-	if err != nil {
+	// overwrite the manifest file with new data
+	if err = manifestFile.AppendWithTmpFile([]byte(newFileName), true); err != nil {
 		log.Println("unable to write content in manifest-log file")
 		return -1, errors.New("unable to flush records")
+	}
+
+	// cleanup invalid files
+	for _, fileName := range files {
+		var file = utils.NewFile(fileName, ssTableRecordsDirPath)
+		if err = file.Remove(); err != nil {
+			log.Println("unable to records of the file with err: ", err.Error())
+			return 0, errors.New("unable to read records")
+		}
 	}
 
 	return lastOffset + 1, nil

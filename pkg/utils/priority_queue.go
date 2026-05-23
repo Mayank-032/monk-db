@@ -4,7 +4,7 @@ import (
 	"errors"
 )
 
-type Comparator[T any] func(a, b T) (comp, equal bool)
+type Comparator[T any] func(a, b T) (comp bool)
 
 type PriorityQueue[T any] struct {
 	data []T
@@ -52,8 +52,8 @@ func (pq *PriorityQueue[T]) Pop() (T, error) {
 		return val, nil
 	}
 
-	val = pq.data[0]
-	pq.data = pq.data[1:]
+	pq.Swap(0, len(pq.data)-1)
+	pq.data = pq.data[:len(pq.data)-1]
 
 	pq.downHeapify(0)
 
@@ -86,30 +86,12 @@ func (pq *PriorityQueue[T]) upHeapify(idx int) {
 		return
 	}
 
-	comp, equal := pq.comp(pq.data[idx], pq.data[parentIdx])
+	comp := pq.comp(pq.data[idx], pq.data[parentIdx])
 	if !comp {
 		return
 	}
 
-	var temp = pq.data[idx]
-	pq.data[idx] = pq.data[parentIdx]
-	pq.data[parentIdx] = temp
-
-	if equal {
-		// fmt.Println("before swap in equal: ", pq.GetData())
-
-		temp = pq.data[idx]
-		pq.data[idx] = pq.data[pq.Size()-1]
-		pq.data[pq.Size()-1] = temp
-		// fmt.Println("after swap in equal: ", pq.GetData())
-
-		pq.data = pq.data[:len(pq.data)-1]
-		// fmt.Println("after removal in equal: ", pq.GetData())
-
-		pq.downHeapify(idx)
-		// fmt.Println("after downheapify in equal: ", pq.GetData())
-	}
-
+	pq.Swap(idx, parentIdx)
 	if parentIdx == 0 {
 		return
 	}
@@ -125,27 +107,21 @@ func (pq *PriorityQueue[T]) downHeapify(idx int) {
 	var lChildIdx int = 2*idx + 1
 	var rChildIdx int = 2*idx + 2
 
-	var temp = pq.data[idx]
-
 	if (lChildIdx < 0 || lChildIdx >= pq.Size()) && (rChildIdx < 0 || rChildIdx >= pq.Size()) {
 		return
 	} else if !(lChildIdx < 0 || lChildIdx >= pq.Size()) && (rChildIdx < 0 || rChildIdx >= pq.Size()) {
-		if comp, _ := pq.comp(pq.data[idx], pq.data[lChildIdx]); comp {
+		if comp := pq.comp(pq.data[idx], pq.data[lChildIdx]); comp {
 			return
 		}
 
-		pq.data[idx] = pq.data[lChildIdx]
-		pq.data[lChildIdx] = temp
-
+		pq.Swap(idx, lChildIdx)
 		pq.downHeapify(lChildIdx)
 	} else {
-		if comp, _ := pq.comp(pq.data[idx], pq.data[rChildIdx]); comp {
+		if comp := pq.comp(pq.data[idx], pq.data[rChildIdx]); comp {
 			return
 		}
 
-		pq.data[idx] = pq.data[rChildIdx]
-		pq.data[rChildIdx] = temp
-
+		pq.Swap(idx, rChildIdx)
 		pq.downHeapify(rChildIdx)
 	}
 }
@@ -164,4 +140,10 @@ func (pq *PriorityQueue[T]) IsEmpty() bool {
 
 func (pq *PriorityQueue[T]) GetData() []T {
 	return pq.data
+}
+
+func (pq *PriorityQueue[T]) Swap(idx1, idx2 int) {
+	var temp = pq.data[idx1]
+	pq.data[idx1] = pq.data[idx2]
+	pq.data[idx2] = temp
 }

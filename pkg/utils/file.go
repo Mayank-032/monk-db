@@ -242,26 +242,29 @@ func (f *File) Append(newData []byte) error {
 	return nil
 }
 
-func (f *File) AppendWithTmpFile(newData []byte) error {
+func (f *File) AppendWithTmpFile(newData []byte, overwrite bool) error {
 	if f == nil {
 		return errors.New("invalid file")
 	}
 
-	// 1. Read the existing content (if file exists)
-	existingData, err := f.Read()
-	if err != nil {
-		return err
-	}
-
-	// 2. Combine: [New Data] + [Existing Data]
 	var combinedData = append(newData, []byte("\n")...)
-	combinedData = append(existingData, combinedData...)
+
+	if !overwrite {
+		// 1. Read the existing content (if file exists)
+		existingData, err := f.Read()
+		if err != nil {
+			return err
+		}
+
+		// 2. Combine: [New Data] + [Existing Data]
+		combinedData = append(existingData, combinedData...)
+	}
 
 	// 3. Create a temporary file
 	var currFilenameArr = strings.Split(f.name, ".")
 	var tmpFileName = fmt.Sprintf("%v.%v", fmt.Sprint(currFilenameArr[0]+"_"+"tmp"), currFilenameArr[1])
 	var tmpFile = NewFile(tmpFileName, f.path)
-	err = tmpFile.Create(CREATE, false)
+	err := tmpFile.Create(CREATE, false)
 	if err != nil {
 		return err
 	}
@@ -313,6 +316,15 @@ func (f *File) Close() error {
 	err := f.file.Close()
 	if err != nil {
 		log.Println("unable to close file: ", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (f *File) Remove() error {
+	err := os.Remove(f.GetFileFullPath())
+	if err != nil {
 		return err
 	}
 

@@ -217,6 +217,10 @@ func (s *Store) Get(key string) (string, error) {
 				return constants.EMPTYSTRING, err
 			}
 
+			if err.Error() == constants.ERRRESOURCEREMOVED {
+				return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
+			}
+
 			c--
 			continue
 		}

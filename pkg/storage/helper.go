@@ -127,8 +127,8 @@ func handleDanglingFileAndGetOffset(
 		}
 
 		if !isFileFound {
-			var removeFile = utils.NewFile(file.Name(), recordDir)
-			err = os.Remove(removeFile.GetFileFullPath())
+			var file = utils.NewFile(file.Name(), recordDir)
+			err = file.Remove()
 			if err != nil {
 				offsetChan <- 0
 				errorChan <- errors.New(fmt.Sprint("unable to remove invalid file on disk: ", err))
