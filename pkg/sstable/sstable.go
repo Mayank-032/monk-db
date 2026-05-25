@@ -9,8 +9,6 @@ import (
 	"monk-db/pkg/utils"
 	"os"
 	"sort"
-	"strconv"
-	"strings"
 )
 
 var (
@@ -191,7 +189,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 }
 
 // This optimizes the sstable storage and returns the latest offset
-func Optimize() (int, error) {
+func Optimize() (int, int, error) {
 	log.Println("[OPTIMIZE START]")
 	log.Println()
 
@@ -202,7 +200,7 @@ func Optimize() (int, error) {
 	files, err := readManifestFileData(manifestFile)
 	if err != nil {
 		log.Println("unable to read manifest file with err: ", err.Error())
-		return -1, errors.New("unable to read file")
+		return -1, -1, errors.New("unable to read file")
 	}
 	log.Println("read all files")
 
@@ -212,14 +210,23 @@ func Optimize() (int, error) {
 		records, err := readRecordsFileData(file)
 		if err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
-			return 0, errors.New("unable to read records")
+			return -1, -1, errors.New("unable to read records")
 		}
 
 		list = append(list, records)
 	}
 	log.Println("unmarshalled all files")
 
-	/* 2) Perform merge k-sorted-list algorithm. */
+	// 2) calculate the new offset
+	lastOffset, err := calculateOffset(files[len(files)-1])
+	if err != nil {
+		return -1, -1, errors.New("unable to convert offset to int")
+	}
+	log.Println("calculate new offset")
+
+	var tempOffset = lastOffset
+
+	/* 3) Perform merge k-sorted-list algorithm. */
 	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) (comp bool) {
 		var val1 string = p1.record.Key
 		var val2 string = p2.record.Key
@@ -251,23 +258,24 @@ func Optimize() (int, error) {
 	log.Println("added first elements priority queue from all files")
 
 	var finalRecord = make([]Record, 0)
+	var overwrite bool = true
 	for !pq.IsEmpty() {
 		var p, err = pq.Pop()
 		if err != nil {
-			return -1, err
+			return -1, -1, err
 		}
 
 		// remove the remaining elements
 		for !pq.IsEmpty() {
 			var topEle, err = pq.Peek()
 			if err != nil {
-				return -1, err
+				return -1, -1, err
 			}
 
 			if p.record.Key == topEle.record.Key {
 				topEle, err = pq.Pop()
 				if err != nil {
-					return -1, err
+					return -1, -1, err
 				}
 
 				if topEle.idx+1 >= len(list[topEle.listIdx]) {
@@ -290,6 +298,19 @@ func Optimize() (int, error) {
 		// append in current final list
 		if !p.record.IsDeleted {
 			finalRecord = append(finalRecord, p.record)
+
+			if len(finalRecord) == 2000 {
+				err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile)
+				if err != nil {
+					log.Printf("marshal records err: %v\n", err.Error())
+					return -1, -1, errors.New("unable to marshal records while compaction")
+				}
+				log.Println("marshalled final records")
+
+				tempOffset = tempOffset + 1
+				finalRecord = make([]Record, 0)
+				overwrite = false
+			}
 		}
 
 		// if for current list the elements are over.. pop another element, as no point of moving further
@@ -306,65 +327,27 @@ func Optimize() (int, error) {
 	}
 	log.Println("priority queue processing finished")
 
-	finalRecordB, err := json.MarshalIndent(finalRecord, constants.EMPTYSTRING, constants.MARSHALSPACING)
-	if err != nil {
-		log.Printf("marshal records err: %v\n", err.Error())
-		return -1, errors.New("unable to marshal records while compaction")
+	if len(finalRecord) > 0 {
+		err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile)
+		if err != nil {
+			log.Printf("marshal records err: %v\n", err.Error())
+			return -1, -1, errors.New("unable to marshal records while compaction")
+		}
+		log.Println("marshalled final records")
 	}
-	log.Println("marshalled final records")
-
-	// 3) calculate the new offset
-	lastFile := files[len(files)-1]
-	fileParts := strings.Split(lastFile, ".")
-	if len(fileParts) < 1 {
-		return -1, errors.New("invalid file format")
-	}
-
-	fileName := fileParts[0]
-	fileNameParts := strings.Split(fileName, "-")
-	if len(fileParts) < 2 {
-		return -1, errors.New("invalid filename format")
-	}
-
-	lastOffset, err := strconv.Atoi(fileNameParts[1])
-	if err != nil {
-		return -1, errors.New("unable to convert offset to int")
-	}
-	log.Println("calculate new offset")
-
-	// For now if the file exceeds the limit of 2000 not an issue
-	var newFileName = fmt.Sprintf("sst-%d.json", (lastOffset + 1))
-	var newFile = utils.NewFile(newFileName, ssTableRecordsDirPath)
-	if err = newFile.Create(utils.CREATE, true); err != nil {
-		log.Printf("create compact file err: %v\n", err.Error())
-		return -1, errors.New("unable to create compact record file")
-	}
-
-	if err = newFile.Write(finalRecordB, utils.WRITEONLY, true); err != nil {
-		log.Printf("write compact file err: %v\n", err.Error())
-		return -1, errors.New("unable to compact records")
-	}
-	log.Println("file created with final records")
-
-	// overwrite the manifest file with new data
-	if err = manifestFile.AppendWithTmpFile([]byte(newFileName), true); err != nil {
-		log.Println("unable to write content in manifest-log file")
-		return -1, errors.New("unable to flush records")
-	}
-	log.Println("overwrite the manifest file")
+	// time.Sleep(1 * time.Minute)
 
 	// cleanup stale files
 	for _, fileName := range files {
 		var file = utils.NewFile(fileName, ssTableRecordsDirPath)
 		if err = file.Remove(); err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
-			return 0, errors.New("unable to read records")
+			return -1, -1, errors.New("unable to read records")
 		}
 	}
 	log.Println("cleanup the stale files")
-	log.Println("optimized_file_offset: ", (lastOffset + 1))
+	log.Println("optimized_file_offset: ", (tempOffset + 1))
+	// time.Sleep(2 * time.Minute)
 
-	return lastOffset + 1, nil
+	return tempOffset + 1, lastOffset, nil
 }
-
-// euelf

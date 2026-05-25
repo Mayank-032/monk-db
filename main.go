@@ -161,7 +161,7 @@ func main() {
 		if totalUpdateOperations == 10000 {
 			// trigger compaction
 			var compactionStartTime = time.Now()
-			newOffset, err := sstable.Optimize()
+			newOffset, lastOffset, err := sstable.Optimize()
 			var totalTimeTakenInMs = time.Since(compactionStartTime).Milliseconds()
 			totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
 			totalCompactOperations = totalCompactOperations + 1
@@ -171,7 +171,7 @@ func main() {
 				os.Exit(1)
 			}
 
-			store.UpdateOffset(newOffset)
+			store.UpdateOffset(newOffset, lastOffset)
 
 			// reset counter
 			totalUpdateOperations = 0

@@ -212,7 +212,11 @@ func (s *Store) Get(key string) (string, error) {
 	}
 
 	var c = s.offset
-	for c > s.lastOffset {
+	if s.lastOffset == 0 {
+		s.lastOffset = 1
+	}
+
+	for c >= s.lastOffset {
 		sstable, err := sstable.NewSSTable(c, constants.READ)
 		if err != nil {
 			return constants.EMPTYSTRING, err
@@ -242,7 +246,7 @@ func (s *Store) Get(key string) (string, error) {
 	return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
 }
 
-func (s *Store) UpdateOffset(newOffset int) {
-	s.lastOffset = s.offset
+func (s *Store) UpdateOffset(newOffset, lastOffset int) {
+	s.lastOffset = lastOffset
 	s.offset = newOffset
 }
