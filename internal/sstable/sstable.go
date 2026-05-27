@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"monk-db/pkg/constants"
-	"monk-db/pkg/utils"
+	"monk-db/internal/constants"
+	"monk-db/internal/ds/heap"
+	cache "monk-db/internal/ds/lru_cache"
+	"monk-db/internal/io/file"
 	"os"
 	"sort"
 )
@@ -19,8 +21,8 @@ var (
 )
 
 func SetManifestLogfilePathAndCreate(name, path string) error {
-	var manifestFile = utils.NewFile(name, path)
-	err := manifestFile.Create(utils.CREATE, true)
+	var manifestFile = file.NewFile(name, path)
+	err := manifestFile.Create(file.CREATE, true)
 	if err != nil {
 		log.Printf("create manifest file err: %v\n", err.Error())
 		return errors.New("unable to create manifest file")
@@ -31,8 +33,8 @@ func SetManifestLogfilePathAndCreate(name, path string) error {
 	return nil
 }
 
-func GetManifestLogfileMetadata() *utils.File {
-	var manifestFile = utils.NewFile(manifestFileName, manifestLogFilePath)
+func GetManifestLogfileMetadata() *file.File {
+	var manifestFile = file.NewFile(manifestFileName, manifestLogFilePath)
 	return manifestFile
 }
 
@@ -52,22 +54,22 @@ func GetRecordDirMetadata() string {
 }
 
 type ssTable struct {
-	file *utils.File
+	file *file.File
 }
 
 func NewSSTable(count int, operation string) (*ssTable, error) {
 	var fileName = fmt.Sprintf("sst-%v.json", count)
 	var pathToFile = ssTableRecordsDirPath
 
-	var file *utils.File
+	var newFile *file.File
 	var err error
 	switch operation {
 	case constants.FLUSH:
-		file = utils.NewFile(fileName, pathToFile)
-		err = file.Create(utils.DEFAULT, true)
+		newFile = file.NewFile(fileName, pathToFile)
+		err = newFile.Create(file.DEFAULT, true)
 	case constants.READ:
-		file = utils.NewFile(fileName, pathToFile)
-		err = file.Get()
+		newFile = file.NewFile(fileName, pathToFile)
+		err = newFile.Get()
 	}
 
 	if err != nil {
@@ -76,7 +78,7 @@ func NewSSTable(count int, operation string) (*ssTable, error) {
 	}
 
 	return &ssTable{
-		file: file,
+		file: newFile,
 	}, nil
 }
 
@@ -99,13 +101,13 @@ func (sst *ssTable) Flush(sstableRecords []Record) error {
 		return errors.New("unable to flush records")
 	}
 
-	err = sst.file.Write(recordBytes, utils.DEFAULT, true)
+	err = sst.file.Write(recordBytes, file.DEFAULT, true)
 	if err != nil {
 		log.Println("unable to write content in record file")
 		return errors.New("unable to flush records")
 	}
 
-	var manifestFile = utils.NewFile(manifestFileName, manifestLogFilePath)
+	var manifestFile = file.NewFile(manifestFileName, manifestLogFilePath)
 	err = manifestFile.Get()
 	if err != nil {
 		return err
@@ -128,7 +130,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 		return "", errors.New("sstable is not initialized")
 	}
 
-	val, err := utils.Cache.Get(sst.file.GetName())
+	val, err := cache.Cache.Get(sst.file.GetName())
 	if err == nil {
 		records, ok := val.([]Record)
 		if ok {
@@ -173,7 +175,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 		log.Println("unmarshal file content err: ", err.Error())
 		return constants.EMPTYSTRING, errors.New("unable to read file")
 	}
-	utils.Cache.PUT(sst.file.GetName(), records)
+	cache.Cache.PUT(sst.file.GetName(), records)
 
 	for _, r := range records {
 		if r.Key == key {
@@ -196,7 +198,7 @@ func Optimize() (int, int, error) {
 	/* 1) Let's start with fetching all the data in-memory at once */
 
 	// Read Manifest File to get the list of existing files
-	var manifestFile = utils.NewFile(manifestFileName, manifestLogFilePath)
+	var manifestFile = file.NewFile(manifestFileName, manifestLogFilePath)
 	files, err := readManifestFileData(manifestFile)
 	if err != nil {
 		log.Println("unable to read manifest file with err: ", err.Error())
@@ -206,7 +208,7 @@ func Optimize() (int, int, error) {
 
 	var list = make([][]Record, 0)
 	for _, fileName := range files {
-		var file = utils.NewFile(fileName, ssTableRecordsDirPath)
+		var file = file.NewFile(fileName, ssTableRecordsDirPath)
 		records, err := readRecordsFileData(file)
 		if err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
@@ -227,7 +229,7 @@ func Optimize() (int, int, error) {
 	var tempOffset = lastOffset
 
 	/* 3) Perform merge k-sorted-list algorithm. */
-	var pq = utils.NewPriorityQueue(func(p1, p2 Pair) (comp bool) {
+	var pq = heap.NewHeap(func(p1, p2 Pair) (comp bool) {
 		var val1 string = p1.record.Key
 		var val2 string = p2.record.Key
 
@@ -339,7 +341,7 @@ func Optimize() (int, int, error) {
 
 	// cleanup stale files
 	for _, fileName := range files {
-		var file = utils.NewFile(fileName, ssTableRecordsDirPath)
+		var file = file.NewFile(fileName, ssTableRecordsDirPath)
 		if err = file.Remove(); err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
 			return -1, -1, errors.New("unable to read records")

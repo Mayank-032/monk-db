@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"monk-db/pkg/constants"
-	"monk-db/pkg/utils"
+	"monk-db/internal/constants"
+	"monk-db/internal/io/file"
 	"strconv"
 	"strings"
 )
 
-func readManifestFileData(manifestFile *utils.File) ([]string, error) {
+func readManifestFileData(manifestFile *file.File) ([]string, error) {
 	fileContent, err := manifestFile.Read()
 	if err != nil {
 		return nil, err
@@ -27,7 +27,7 @@ func readManifestFileData(manifestFile *utils.File) ([]string, error) {
 	return fileContentPart[:len(fileContentPart)-1], nil
 }
 
-func readRecordsFileData(file *utils.File) ([]Record, error) {
+func readRecordsFileData(file *file.File) ([]Record, error) {
 	contentBytes, err := file.Read()
 	if err != nil {
 		log.Println("read file content error: ", err.Error())
@@ -69,7 +69,7 @@ func calculateOffset(lastFile string) (int, error) {
 	return lastOffset, nil
 }
 
-func createFileAndWriteData(offset int, overwrite bool, finalRecord []Record, manifestFile *utils.File) error {
+func createFileAndWriteData(offset int, overwrite bool, finalRecord []Record, manifestFile *file.File) error {
 	finalRecordB, err := json.MarshalIndent(finalRecord, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
 		log.Printf("marshal records err: %v\n", err.Error())
@@ -78,19 +78,17 @@ func createFileAndWriteData(offset int, overwrite bool, finalRecord []Record, ma
 	log.Println("marshalled final records")
 
 	var newFileName = fmt.Sprintf("sst-%d.json", (offset + 1))
-	var newFile = utils.NewFile(newFileName, ssTableRecordsDirPath)
-	if err = newFile.Create(utils.CREATE, true); err != nil {
+	var newFile = file.NewFile(newFileName, ssTableRecordsDirPath)
+	if err = newFile.Create(file.CREATE, true); err != nil {
 		log.Printf("create compact file err: %v\n", err.Error())
 		return errors.New("unable to create compact record file")
 	}
 
-	if err = newFile.Write(finalRecordB, utils.WRITEONLY, true); err != nil {
+	if err = newFile.Write(finalRecordB, file.WRITEONLY, true); err != nil {
 		log.Printf("write compact file err: %v\n", err.Error())
 		return errors.New("unable to compact records")
 	}
 	log.Println("file created with final records")
-
-
 
 	// overwrite the manifest file with new data
 	if err = manifestFile.AppendWithTmpFile([]byte(newFileName), overwrite); err != nil {

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"monk-db/pkg/constants"
-	"monk-db/pkg/sstable"
-	"monk-db/pkg/utils"
+	"monk-db/internal/constants"
+	"monk-db/internal/io/file"
+	"monk-db/internal/sstable"
 	"os"
 	"strconv"
 	"strings"
@@ -15,7 +15,7 @@ import (
 )
 
 func loadFromWalFile(
-	walFile *utils.File,
+	walFile *file.File,
 	size int,
 	dataChan chan map[string]Metadata,
 	errorChan chan error,
@@ -86,7 +86,7 @@ func loadFromWalFile(
 }
 
 func handleDanglingFileAndGetOffset(
-	manifestFile *utils.File,
+	manifestFile *file.File,
 	recordDir string,
 	offsetChan chan int,
 	errorChan chan error,
@@ -117,18 +117,18 @@ func handleDanglingFileAndGetOffset(
 		return
 	}
 
-	for _, file := range files {
+	for _, f := range files {
 		var isFileFound bool
 		for _, part := range fileContentPart {
-			if strings.EqualFold(file.Name(), part) {
+			if strings.EqualFold(f.Name(), part) {
 				isFileFound = true
 				break
 			}
 		}
 
 		if !isFileFound {
-			var file = utils.NewFile(file.Name(), recordDir)
-			err = file.Remove()
+			var newFile = file.NewFile(f.Name(), recordDir)
+			err = newFile.Remove()
 			if err != nil {
 				offsetChan <- 0
 				errorChan <- errors.New(fmt.Sprint("unable to remove invalid file on disk: ", err))

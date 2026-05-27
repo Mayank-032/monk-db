@@ -1,8 +1,8 @@
-package utils
+package cache
 
 import (
 	"errors"
-	"monk-db/pkg/constants"
+	"monk-db/internal/constants"
 )
 
 type Node struct {

@@ -1,10 +1,10 @@
-package utils
+package file
 
 import (
 	"errors"
 	"fmt"
 	"log"
-	"monk-db/pkg/constants"
+	"monk-db/internal/constants"
 	"os"
 	"strings"
 )

@@ -1,4 +1,4 @@
-package utils
+package heap
 
 import (
 	"errors"
@@ -6,19 +6,19 @@ import (
 
 type Comparator[T any] func(a, b T) (comp bool)
 
-type PriorityQueue[T any] struct {
+type Heap[T any] struct {
 	data []T
 	comp Comparator[T]
 }
 
-func NewPriorityQueue[T any](comp Comparator[T]) *PriorityQueue[T] {
-	return &PriorityQueue[T]{
+func NewHeap[T any](comp Comparator[T]) *Heap[T] {
+	return &Heap[T]{
 		data: make([]T, 0),
 		comp: comp,
 	}
 }
 
-func (pq *PriorityQueue[T]) Push(val T) error {
+func (pq *Heap[T]) Push(val T) error {
 	if pq == nil || pq.data == nil {
 		return errors.New("priority queue not initialized")
 	}
@@ -34,7 +34,7 @@ func (pq *PriorityQueue[T]) Push(val T) error {
 	return nil
 }
 
-func (pq *PriorityQueue[T]) Pop() (T, error) {
+func (pq *Heap[T]) Pop() (T, error) {
 	var val T
 
 	if pq == nil || pq.data == nil {
@@ -61,7 +61,7 @@ func (pq *PriorityQueue[T]) Pop() (T, error) {
 	return val, nil
 }
 
-func (pq *PriorityQueue[T]) Peek() (T, error) {
+func (pq *Heap[T]) Peek() (T, error) {
 	var val T
 
 	if pq == nil || pq.data == nil {
@@ -76,7 +76,7 @@ func (pq *PriorityQueue[T]) Peek() (T, error) {
 	return val, nil
 }
 
-func (pq *PriorityQueue[T]) upHeapify(idx int) {
+func (pq *Heap[T]) upHeapify(idx int) {
 	if idx < 0 || idx >= pq.Size() {
 		return
 	}
@@ -100,7 +100,7 @@ func (pq *PriorityQueue[T]) upHeapify(idx int) {
 	pq.upHeapify(parentIdx)
 }
 
-func (pq *PriorityQueue[T]) downHeapify(idx int) {
+func (pq *Heap[T]) downHeapify(idx int) {
 	if idx < 0 || idx >= pq.Size() {
 		return
 	}
@@ -143,11 +143,11 @@ func (pq *PriorityQueue[T]) downHeapify(idx int) {
 	}
 }
 
-func (pq *PriorityQueue[T]) Size() int {
+func (pq *Heap[T]) Size() int {
 	return len(pq.data)
 }
 
-func (pq *PriorityQueue[T]) IsEmpty() bool {
+func (pq *Heap[T]) IsEmpty() bool {
 	if len(pq.data) == 0 {
 		return true
 	}
@@ -155,11 +155,11 @@ func (pq *PriorityQueue[T]) IsEmpty() bool {
 	return false
 }
 
-func (pq *PriorityQueue[T]) GetData() []T {
+func (pq *Heap[T]) GetData() []T {
 	return pq.data
 }
 
-func (pq *PriorityQueue[T]) Swap(idx1, idx2 int) {
+func (pq *Heap[T]) Swap(idx1, idx2 int) {
 	var temp = pq.data[idx1]
 	pq.data[idx1] = pq.data[idx2]
 	pq.data[idx2] = temp

@@ -1,6 +1,6 @@
-/pkg/sstable/records
-/pkg/sstable/manifest.txt
-/pkg/sstable/wal.*
+/internal/sstable/records
+/internal/sstable/manifest.txt
+/internal/sstable/wal.*
 .DS_STORE
-pkg/storage/wal.db
+internal/storage/wal.db
 *.txt

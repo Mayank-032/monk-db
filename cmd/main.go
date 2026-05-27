@@ -2,10 +2,11 @@ package main
 
 import (
 	"log"
-	"monk-db/pkg/constants"
-	"monk-db/pkg/sstable"
-	"monk-db/pkg/storage"
-	"monk-db/pkg/utils"
+	"monk-db/internal/constants"
+	cache "monk-db/internal/ds/lru_cache"
+	"monk-db/internal/io/file"
+	"monk-db/internal/sstable"
+	"monk-db/internal/storage"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,16 +15,16 @@ import (
 )
 
 func main() {
-	utils.NewLRUCache(10)
+	cache.NewLRUCache(10)
 	log.Println("cache init success")
 
 	_, filename, _, _ := runtime.Caller(0)
 	baseDir := filepath.Dir(filename)
 
 	manifestFilename := "manifest.txt"
-	// manifestFilepath := filepath.Join(baseDir, "./pkg/sstable")
-	sstableRecordsDirPath := filepath.Join(baseDir, "./pkg/sstable/records")
-	if err := sstable.SetManifestLogfilePathAndCreate(manifestFilename, "./pkg/sstable"); err != nil {
+	// manifestFilepath := filepath.Join(baseDir, "./internal/sstable")
+	sstableRecordsDirPath := filepath.Join(baseDir, "./internal/sstable/records")
+	if err := sstable.SetManifestLogfilePathAndCreate(manifestFilename, "./internal/sstable"); err != nil {
 		os.Exit(1)
 		return
 	}
@@ -36,7 +37,7 @@ func main() {
 	log.Println("manifest file init success")
 
 	var walFilename = "wal.db"
-	var walFilepath = filepath.Join(baseDir, "./pkg/storage")
+	var walFilepath = filepath.Join(baseDir, "./internal/storage")
 	var size = 2000
 
 	var initStoreStartTime = time.Now()
@@ -50,7 +51,7 @@ func main() {
 	}
 	log.Printf("memtable init success, total initialization time taken: %v ms\n", initStoreTimeDuration)
 
-	buffer, err := utils.ParseFile("./put-delete.txt")
+	buffer, err := file.ParseFile("./put-delete.txt")
 	if err != nil {
 		log.Println("unable to parse file; err: ", err.Error())
 		os.Exit(1)

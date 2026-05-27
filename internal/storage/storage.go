@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"monk-db/pkg/constants"
-	"monk-db/pkg/sstable"
-	"monk-db/pkg/utils"
+	"monk-db/internal/constants"
+	"monk-db/internal/io/file"
+	"monk-db/internal/sstable"
 	"strings"
 	"sync"
 )
@@ -17,9 +17,9 @@ var (
 	walFilePath string
 )
 
-func SetWALFilePathAndCreate(name, path string) (*utils.File, error) {
-	var walFile = utils.NewFile(name, path)
-	err := walFile.Create(utils.CREATE, true)
+func SetWALFilePathAndCreate(name, path string) (*file.File, error) {
+	var walFile = file.NewFile(name, path)
+	err := walFile.Create(file.CREATE, true)
 	if err != nil {
 		log.Printf("create wal file err: %v\n", err.Error())
 		return nil, errors.New("unable to create wal file")
@@ -40,7 +40,7 @@ type Metadata struct {
 
 type Store struct {
 	data       map[string]Metadata
-	walFile    *utils.File
+	walFile    *file.File
 	lastOffset int
 	offset     int
 	size       int
@@ -134,7 +134,7 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 	}
 	walRecordBytes = append(walRecordBytes, []byte("\n")...)
 
-	err = s.walFile.Write(walRecordBytes, utils.APPEND, true)
+	err = s.walFile.Write(walRecordBytes, file.APPEND, true)
 	if err != nil {
 		return false, errors.New("unable to write wal")
 	}
