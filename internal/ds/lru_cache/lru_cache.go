@@ -5,15 +5,15 @@ import (
 	"monk-db/internal/constants"
 )
 
-type Node struct {
+type Node[T any] struct {
 	Key  string
-	Val  interface{}
-	Prev *Node
-	Next *Node
+	Val  T
+	Prev *Node[T]
+	Next *Node[T]
 }
 
-func NewNode(key string, val interface{}) *Node {
-	return &Node{
+func NewNode[T any](key string, val T) *Node[T] {
+	return &Node[T]{
 		Key:  key,
 		Val:  val,
 		Prev: nil,
@@ -21,32 +21,33 @@ func NewNode(key string, val interface{}) *Node {
 	}
 }
 
-type lruCache struct {
+type Cache[T any] struct {
 	Capacity int
-	Map      map[string]*Node
-	Head     *Node
-	Tail     *Node
+	Map      map[string]*Node[T]
+	Head     *Node[T]
+	Tail     *Node[T]
 }
 
-var Cache *lruCache
-
-func NewLRUCache(capacity int) {
-	var head = NewNode("", "")
-	var tail = NewNode("", "")
+func NewLRUCache[T any](capacity int) *Cache[T] {
+	var zero T
+	var head = NewNode("", zero)
+	var tail = NewNode("", zero)
 	head.Next = tail
 	tail.Prev = head
 
-	Cache = &lruCache{
+	return &Cache[T]{
 		Capacity: capacity,
-		Map:      make(map[string]*Node),
+		Map:      make(map[string]*Node[T]),
 		Head:     head,
 		Tail:     tail,
 	}
 }
 
-func (c *lruCache) Get(key string) (interface{}, error) {
+func (c *Cache[T]) Get(key string) (T, error) {
+	var zero T
+
 	if key == constants.EMPTYSTRING {
-		return "", nil
+		return zero, nil
 	}
 
 	if node, ok := c.Map[key]; ok {
@@ -55,10 +56,10 @@ func (c *lruCache) Get(key string) (interface{}, error) {
 		return node.Val, nil
 	}
 
-	return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
+	return zero, errors.New(constants.ERRNOTFOUND)
 }
 
-func (c *lruCache) PUT(key string, val interface{}) {
+func (c *Cache[T]) PUT(key string, val T) {
 	if key == constants.EMPTYSTRING {
 		return
 	}
@@ -78,7 +79,7 @@ func (c *lruCache) PUT(key string, val interface{}) {
 	}
 }
 
-func (c *lruCache) _insert(node *Node) {
+func (c *Cache[T]) _insert(node *Node[T]) {
 	var nextNode = c.Head.Next
 	var prevNode = c.Head
 
@@ -89,7 +90,7 @@ func (c *lruCache) _insert(node *Node) {
 	nextNode.Prev = node
 }
 
-func (c *lruCache) _delete(node *Node) {
+func (c *Cache[T]) _delete(node *Node[T]) {
 	var prevNode = node.Prev
 	var nextNode = node.Next
 

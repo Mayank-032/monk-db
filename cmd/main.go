@@ -3,53 +3,35 @@ package main
 import (
 	"log"
 	"monk-db/internal/constants"
-	cache "monk-db/internal/ds/lru_cache"
 	"monk-db/internal/io/file"
-	"monk-db/internal/sstable"
 	"monk-db/internal/storage"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
 
+var (
+	// PUT OPERATIONS
+	totalPutTimeInMs   = 0
+	totalPutOperations = 0
+
+	// GET OPERATIONS
+	totalGetTimeInMs   = 0
+	totalGetOperations = 0
+
+	// DELETE OPERATIONS
+	totalDeleteTimeInMs   = 0
+	totalDeleteOperations = 0
+
+	totalUpdateOperations = 0
+
+	// Compact Operation
+	totalCompactTimeInMs   = 0
+	totalCompactOperations = 0
+)
+
 func main() {
-	cache.NewLRUCache(10)
-	log.Println("cache init success")
-
-	_, filename, _, _ := runtime.Caller(0)
-	baseDir := filepath.Dir(filename)
-
-	manifestFilename := "manifest.txt"
-	// manifestFilepath := filepath.Join(baseDir, "./internal/sstable")
-	sstableRecordsDirPath := filepath.Join(baseDir, "./internal/sstable/records")
-	if err := sstable.SetManifestLogfilePathAndCreate(manifestFilename, "./internal/sstable"); err != nil {
-		os.Exit(1)
-		return
-	}
-	log.Println("records dir init success")
-
-	if err := sstable.SetSSTableRecordsDirPathAndCreate(sstableRecordsDirPath); err != nil {
-		os.Exit(1)
-		return
-	}
-	log.Println("manifest file init success")
-
-	var walFilename = "wal.db"
-	var walFilepath = filepath.Join(baseDir, "./internal/storage")
-	var size = 2000
-
-	var initStoreStartTime = time.Now()
-	store, err := storage.InitStore(size, walFilename, walFilepath)
-	var initStoreTimeDuration = time.Since(initStoreStartTime).Milliseconds()
-
-	if err != nil || store == nil {
-		log.Println("unable to init store")
-		os.Exit(1)
-		return
-	}
-	log.Printf("memtable init success, total initialization time taken: %v ms\n", initStoreTimeDuration)
+	var store = storage.GetStore()
 
 	buffer, err := file.ParseFile("./put-delete.txt")
 	if err != nil {
@@ -57,26 +39,6 @@ func main() {
 		os.Exit(1)
 		return
 	}
-
-	var (
-		// PUT OPERATIONS
-		totalPutTimeInMs   = 0
-		totalPutOperations = 0
-
-		// GET OPERATIONS
-		totalGetTimeInMs   = 0
-		totalGetOperations = 0
-
-		// DELETE OPERATIONS
-		totalDeleteTimeInMs   = 0
-		totalDeleteOperations = 0
-
-		totalUpdateOperations = 0
-
-		// Compact Operation
-		totalCompactTimeInMs   = 0
-		totalCompactOperations = 0
-	)
 
 	startTime := time.Now()
 	for index, block := range buffer {
@@ -162,7 +124,7 @@ func main() {
 		if totalUpdateOperations == 10000 {
 			// trigger compaction
 			var compactionStartTime = time.Now()
-			newOffset, lastOffset, err := sstable.Optimize()
+			// newOffset, lastOffset, err := sstable.Optimize()
 			var totalTimeTakenInMs = time.Since(compactionStartTime).Milliseconds()
 			totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
 			totalCompactOperations = totalCompactOperations + 1
@@ -172,7 +134,7 @@ func main() {
 				os.Exit(1)
 			}
 
-			store.UpdateOffset(newOffset, lastOffset)
+			// store.UpdateOffset(newOffset, lastOffset)
 
 			// reset counter
 			totalUpdateOperations = 0
@@ -181,16 +143,17 @@ func main() {
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()
 
 	var avgTimeTakenForPutOperationsInMs = float64(totalPutTimeInMs) / float64(totalPutOperations)
-	var avgTimeTakenForGetOperationsInMs = float64(totalGetTimeInMs) / float64(totalGetOperations)
-	var avgTimeTakenForDeleteOperationsInMs = float64(totalDeleteTimeInMs) / float64(totalDeleteOperations)
-	var avgTimeTakenForCompactOperationsInMs = float64(totalCompactTimeInMs) / float64(totalCompactOperations)
-
 	log.Printf("Avg. time taken for all PUT operations: %v ms\n", avgTimeTakenForPutOperationsInMs)
+
+	var avgTimeTakenForGetOperationsInMs = float64(totalGetTimeInMs) / float64(totalGetOperations)
 	log.Printf("Avg. time taken for all GET operations: %v ms\n", avgTimeTakenForGetOperationsInMs)
+
+	var avgTimeTakenForDeleteOperationsInMs = float64(totalDeleteTimeInMs) / float64(totalDeleteOperations)
 	log.Printf("Avg. time taken for all DELETE operations: %v ms\n", avgTimeTakenForDeleteOperationsInMs)
+
+	var avgTimeTakenForCompactOperationsInMs = float64(totalCompactTimeInMs) / float64(totalCompactOperations)
 	log.Printf("Avg. time take for all COMPACT operations: %v ms\n", avgTimeTakenForCompactOperationsInMs)
 
 	log.Printf("total time taken for all 30k combined operations: %v ms\n", totalTimeTakenInMs)
-
 	os.Exit(0)
 }

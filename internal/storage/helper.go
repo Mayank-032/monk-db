@@ -2,48 +2,30 @@ package storage
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
 	"monk-db/internal/constants"
 	"monk-db/internal/io/file"
-	"monk-db/internal/sstable"
-	"os"
+	"monk-db/internal/models"
 	"strconv"
 	"strings"
-	"sync"
 )
 
-func loadFromWalFile(
-	walFile *file.File,
-	size int,
-	dataChan chan map[string]Metadata,
-	errorChan chan error,
-	wg *sync.WaitGroup,
-) {
-	defer wg.Done()
-
+func loadFromWalFile(walFile *file.File, size int) (map[string]Metadata, error) {
 	walFileBytes, err := walFile.Read()
 	if err != nil {
-		dataChan <- nil
-		errorChan <- err
-		return
+		return nil, err
 	}
 
 	var data = make(map[string]Metadata, size)
 
 	var walFileStr = string(walFileBytes)
 	if len(walFileStr) == 0 {
-		dataChan <- nil
-		errorChan <- nil
-		return
+		return nil, nil
 	}
 
 	var walFileRecords = strings.Split(walFileStr, "\n")
 	if len(walFileRecords) == 0 {
-		dataChan <- nil
-		errorChan <- err
-		return
+		return nil, nil
 	}
 
 	for _, record := range walFileRecords {
@@ -55,9 +37,7 @@ func loadFromWalFile(
 		err = json.Unmarshal([]byte(record), &walRecord)
 		if err != nil {
 			log.Println("unable to unmarshal record while loading store")
-			dataChan <- nil
-			errorChan <- err
-			return
+			return nil, err
 		}
 
 		switch walRecord.Operation {
@@ -81,72 +61,7 @@ func loadFromWalFile(
 		}
 	}
 
-	dataChan <- data
-	errorChan <- nil
-}
-
-func handleDanglingFileAndGetOffset(
-	manifestFile *file.File,
-	recordDir string,
-	offsetChan chan int,
-	errorChan chan error,
-	wg *sync.WaitGroup,
-) {
-	defer wg.Done()
-
-	fileContent, err := manifestFile.Read()
-	if err != nil {
-		offsetChan <- 0
-		errorChan <- err
-		return
-	}
-
-	var fileContentStr = string(fileContent)
-
-	var fileContentPart = strings.Split(fileContentStr, "\n")
-	if len(fileContentPart) <= 1 {
-		offsetChan <- 0
-		errorChan <- nil
-		return
-	}
-
-	files, err := os.ReadDir(recordDir)
-	if err != nil {
-		offsetChan <- 0
-		errorChan <- errors.New(fmt.Sprint("unable to read dir: ", err))
-		return
-	}
-
-	for _, f := range files {
-		var isFileFound bool
-		for _, part := range fileContentPart {
-			if strings.EqualFold(f.Name(), part) {
-				isFileFound = true
-				break
-			}
-		}
-
-		if !isFileFound {
-			var newFile = file.NewFile(f.Name(), recordDir)
-			err = newFile.Remove()
-			if err != nil {
-				offsetChan <- 0
-				errorChan <- errors.New(fmt.Sprint("unable to remove invalid file on disk: ", err))
-				return
-			}
-			fmt.Println("file removed success")
-		}
-	}
-
-	offset, err := getOffsetFromManifestFile(fileContentStr, fileContentPart)
-	if err != nil {
-		offsetChan <- offset
-		errorChan <- err
-		return
-	}
-
-	offsetChan <- offset
-	errorChan <- nil
+	return data, nil
 }
 
 func getOffsetFromManifestFile(fileContentStr string, fileContentPart []string) (int, error) {
@@ -175,10 +90,10 @@ func getOffsetFromManifestFile(fileContentStr string, fileContentPart []string) 
 	return counterInt, nil
 }
 
-func convertToSSTableDataFormat(data map[string]Metadata) []sstable.Record {
-	var sstableRecords = make([]sstable.Record, 0, len(data))
+func convertToSSTableDataFormat(data map[string]Metadata) []models.Record {
+	var sstableRecords = make([]models.Record, 0, len(data))
 	for key, metadata := range data {
-		sstableRecords = append(sstableRecords, sstable.Record{
+		sstableRecords = append(sstableRecords, models.Record{
 			Key:       key,
 			Value:     metadata.Val,
 			IsDeleted: metadata.isDeleted,

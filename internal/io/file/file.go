@@ -41,26 +41,23 @@ func NewFile(name, path string) *File {
 
 func (f *File) Get() error {
 	if f == nil {
-		log.Println("invalid file operation")
-		return nil
+		return fmt.Errorf("invalid file operation")
 	}
 
 	file, err := os.Open(f.filePathWithName)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Println("unable to open file: ", err.Error())
-		return err
+		return fmt.Errorf("unable to open file with err: %w", err)
 	}
 
 	if file == nil {
-		log.Println("file does not exist")
-		return nil
+		return fmt.Errorf("file does not exist")
 	}
 
 	f.file = file
 
 	err = f.Close()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to close file")
 	}
 
 	return nil
@@ -98,8 +95,7 @@ func (f *File) Read() ([]byte, error) {
 
 	b, err := os.ReadFile(f.filePathWithName)
 	if err != nil && !os.IsNotExist(err) {
-		log.Println("unable to open file in read-only mode: ", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("unable to open file in read-only mode: %w", err)
 	}
 
 	return b, nil
@@ -115,8 +111,7 @@ func (f *File) Create(op OperationType, isSync bool) error {
 	case CREATE:
 		fileInfo, err := os.Stat(f.filePathWithName)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Println("unable to get stat of the file: ", err.Error())
-			return err
+			return fmt.Errorf("unable to get stat of the file: %w", err)
 		}
 
 		if fileInfo != nil {
@@ -129,8 +124,7 @@ func (f *File) Create(op OperationType, isSync bool) error {
 	default:
 		fileInfo, err := os.Stat(f.filePathWithName)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Println("unable to get stat of the file: ", err.Error())
-			return err
+			return fmt.Errorf("unable to get stat of the file: %w", err)
 		}
 
 		if fileInfo != nil {
@@ -140,15 +134,13 @@ func (f *File) Create(op OperationType, isSync bool) error {
 	}
 
 	if err != nil {
-		log.Println("unable to create file: ", err.Error())
-		return err
+		return fmt.Errorf("unable to create file: %w", err)
 	}
 
 	if isSync {
 		err = f.file.Sync()
 		if err != nil {
-			log.Println("unable to sync file: ", err.Error())
-			return err
+			return fmt.Errorf("unable to sync file: %w", err)
 		}
 	}
 
@@ -157,7 +149,7 @@ func (f *File) Create(op OperationType, isSync bool) error {
 
 func (f *File) Write(payload []byte, op OperationType, isSync bool) error {
 	if f == nil {
-		return errors.New("invalid file")
+		return fmt.Errorf("invalid file")
 	}
 
 	var err error
@@ -166,8 +158,8 @@ func (f *File) Write(payload []byte, op OperationType, isSync bool) error {
 	case APPEND:
 		f.file, err = os.OpenFile(f.filePathWithName, os.O_APPEND|os.O_WRONLY, constants.FILEPERMISSION)
 		if err != nil {
-			log.Println("unable to open file in append mode: ", err.Error())
-			return err
+			log.Println()
+			return fmt.Errorf("unable to open file in append mode: %w", err)
 		}
 
 		_, err = f.file.Write(payload)
@@ -179,15 +171,13 @@ func (f *File) Write(payload []byte, op OperationType, isSync bool) error {
 	}
 
 	if err != nil {
-		log.Println("unable to write file: ", err.Error())
-		return err
+		return fmt.Errorf("unable to write file: %w", err)
 	}
 
 	if isSync {
 		err = f.file.Sync()
 		if err != nil {
-			log.Println("unable to sync file: ", err.Error())
-			return err
+			return fmt.Errorf("unable to sync file: %w", err)
 		}
 	}
 
@@ -196,13 +186,13 @@ func (f *File) Write(payload []byte, op OperationType, isSync bool) error {
 
 func (f *File) Prepend(newData []byte) error {
 	if f == nil {
-		return errors.New("invalid file")
+		return fmt.Errorf("invalid file")
 	}
 
 	// 1. Read the existing content (if file exists)
 	existingData, err := f.Read()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to read file content: %w", err)
 	}
 
 	// 2. Combine: [New Data] + [Existing Data]
@@ -212,7 +202,7 @@ func (f *File) Prepend(newData []byte) error {
 	// 3. Overwrite the file with the combined content
 	err = f.Write(combinedData, DEFAULT, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to write file content: %w", err)
 	}
 
 	return nil
@@ -220,13 +210,13 @@ func (f *File) Prepend(newData []byte) error {
 
 func (f *File) Append(newData []byte) error {
 	if f == nil {
-		return errors.New("invalid file")
+		return fmt.Errorf("invalid file")
 	}
 
 	// 1. Read the existing content (if file exists)
 	existingData, err := f.Read()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to read file content: %w", err)
 	}
 
 	// 2. Combine: [New Data] + [Existing Data]
@@ -236,7 +226,7 @@ func (f *File) Append(newData []byte) error {
 	// 3. Overwrite the file with the combined content
 	err = f.Write(combinedData, DEFAULT, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to write file content: %w", err)
 	}
 
 	return nil
@@ -244,7 +234,7 @@ func (f *File) Append(newData []byte) error {
 
 func (f *File) AppendWithTmpFile(newData []byte, overwrite bool) error {
 	if f == nil {
-		return errors.New("invalid file")
+		return fmt.Errorf("invalid file")
 	}
 
 	var combinedData = append(newData, []byte("\n")...)
@@ -253,7 +243,7 @@ func (f *File) AppendWithTmpFile(newData []byte, overwrite bool) error {
 		// 1. Read the existing content (if file exists)
 		existingData, err := f.Read()
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to read file content: %w", err)
 		}
 
 		// 2. Combine: [New Data] + [Existing Data]
@@ -266,24 +256,24 @@ func (f *File) AppendWithTmpFile(newData []byte, overwrite bool) error {
 	var tmpFile = NewFile(tmpFileName, f.path)
 	err := tmpFile.Create(CREATE, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to create file: %w", err)
 	}
 
 	// 4. Write the temporary file
 	err = tmpFile.Write(combinedData, WRITEONLY, true)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to write file content: %w", err)
 	}
 
 	err = tmpFile.Close()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to close file: %w", err)
 	}
 
 	// 5. Rename the temporary file with old file-name to overwrite the data
 	err = tmpFile.Rename(f.name)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to rename file: %w", err)
 	}
 
 	return nil
@@ -296,8 +286,8 @@ func (f *File) Rename(name string) error {
 
 	err := os.Rename(f.filePathWithName, renamePath)
 	if err != nil {
-		log.Println("unable to rename file: ", err.Error())
-		return err
+		log.Println()
+		return fmt.Errorf("unable to rename file: %w", err)
 	}
 
 	return nil
@@ -305,8 +295,7 @@ func (f *File) Rename(name string) error {
 
 func (f *File) Reset(isSync bool) error {
 	if err := f.Create(TRUNC, isSync); err != nil {
-		log.Println("unable to reset file")
-		return err
+		return fmt.Errorf("unable to reset file: %w", err)
 	}
 
 	return nil
@@ -315,8 +304,7 @@ func (f *File) Reset(isSync bool) error {
 func (f *File) Close() error {
 	err := f.file.Close()
 	if err != nil {
-		log.Println("unable to close file: ", err.Error())
-		return err
+		return fmt.Errorf("unable to close file: %w", err)
 	}
 
 	return nil
@@ -325,7 +313,7 @@ func (f *File) Close() error {
 func (f *File) Remove() error {
 	err := os.Remove(f.GetFileFullPath())
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to remove file: %w", err)
 	}
 
 	return nil

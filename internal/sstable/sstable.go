@@ -9,18 +9,33 @@ import (
 	"monk-db/internal/ds/heap"
 	cache "monk-db/internal/ds/lru_cache"
 	"monk-db/internal/io/file"
+	"monk-db/internal/models"
 	"os"
 	"sort"
 )
 
-var (
-	ssTableRecordsDirPath string
+type ssTable struct {
+	offset         int
+	lastOffset     int
+	cache          *cache.Cache[[]models.Record]
+	manifestFile   *file.File
+	recordsDirPath string
+}
 
-	manifestFileName    string
-	manifestLogFilePath string
-)
+func NewSSTable(recordsDirPath string, cache *cache.Cache[[]models.Record]) (*ssTable, error) {
+	err := os.Mkdir(recordsDirPath, constants.DIRPERMISSION)
+	if err != nil && !errors.Is(err, os.ErrExist) {
+		log.Printf("create records dir err: %v\n", err.Error())
+		return nil, errors.New("unable to create records dir")
+	}
 
-func SetManifestLogfilePathAndCreate(name, path string) error {
+	return &ssTable{
+		cache:          cache,
+		recordsDirPath: recordsDirPath,
+	}, nil
+}
+
+func (sst *ssTable) SetManifestFile(name, path string) error {
 	var manifestFile = file.NewFile(name, path)
 	err := manifestFile.Create(file.CREATE, true)
 	if err != nil {
@@ -28,177 +43,133 @@ func SetManifestLogfilePathAndCreate(name, path string) error {
 		return errors.New("unable to create manifest file")
 	}
 
-	manifestFileName = name
-	manifestLogFilePath = path
+	sst.manifestFile = manifestFile
 	return nil
 }
 
-func GetManifestLogfileMetadata() *file.File {
-	var manifestFile = file.NewFile(manifestFileName, manifestLogFilePath)
-	return manifestFile
+func (sst *ssTable) GetManifestFile() *file.File {
+	return sst.manifestFile
 }
 
-func SetSSTableRecordsDirPathAndCreate(path string) error {
-	err := os.Mkdir(path, constants.DIRPERMISSION)
-	if err != nil && !errors.Is(err, os.ErrExist) {
-		log.Printf("create records dir err: %v\n", err.Error())
-		return errors.New("unable to create records dir")
-	}
-
-	ssTableRecordsDirPath = path
-	return nil
-}
-
-func GetRecordDirMetadata() string {
-	return ssTableRecordsDirPath
-}
-
-type ssTable struct {
-	file *file.File
-}
-
-func NewSSTable(count int, operation string) (*ssTable, error) {
-	var fileName = fmt.Sprintf("sst-%v.json", count)
-	var pathToFile = ssTableRecordsDirPath
-
-	var newFile *file.File
-	var err error
-	switch operation {
-	case constants.FLUSH:
-		newFile = file.NewFile(fileName, pathToFile)
-		err = newFile.Create(file.DEFAULT, true)
-	case constants.READ:
-		newFile = file.NewFile(fileName, pathToFile)
-		err = newFile.Get()
-	}
-
-	if err != nil {
-		log.Println("sstable init err: ", err.Error())
-		return nil, errors.New("unable to init sstable")
-	}
-
-	return &ssTable{
-		file: newFile,
-	}, nil
+func (sst *ssTable) GetRecordsDirPath() string {
+	return sst.recordsDirPath
 }
 
 // it will convert to respective data structure and flush it to the log file
-func (sst *ssTable) Flush(sstableRecords []Record) error {
-	log.Println("[FLUSH START]")
-	log.Println()
-
+func (sst *ssTable) Flush(sstableRecords []models.Record) error {
+	// check if sstable is initialized or not
 	if sst == nil {
-		return errors.New("sstable is not initialized")
+		return fmt.Errorf("sstable is not initialized")
 	}
 
+	// sort the content need to be written in sstable
 	sort.SliceStable(sstableRecords, func(i, j int) bool {
 		return sstableRecords[i].Key < sstableRecords[j].Key
 	})
 
+	// marshal the json content
 	recordBytes, err := json.MarshalIndent(sstableRecords, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
 		log.Printf("marshal records err: %v\n", err.Error())
-		return errors.New("unable to flush records")
+		return fmt.Errorf("unable to flush records, with marshalling error: %w", err)
 	}
 
-	err = sst.file.Write(recordBytes, file.DEFAULT, true)
+	// create a file with new offset
+	var newFile = file.NewFile(fmt.Sprintf("sst-%v.json", sst.offset+1), sst.recordsDirPath)
+	err = newFile.Create(file.DEFAULT, true)
 	if err != nil {
-		log.Println("unable to write content in record file")
-		return errors.New("unable to flush records")
+		return fmt.Errorf("unable to flush records, with create file error: %w", err)
 	}
 
-	var manifestFile = file.NewFile(manifestFileName, manifestLogFilePath)
-	err = manifestFile.Get()
+	// flush the contents to new file
+	err = newFile.Write(recordBytes, file.DEFAULT, true)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to flush records, with write file error: %w", err)
 	}
 
-	err = manifestFile.AppendWithTmpFile([]byte(sst.file.GetName()), false)
+	// read the manifest file, TODO: Update the fetching of manifest file from central place
+	// err = manifestFile.Get()
+	// if err != nil {
+	// 	return fmt.Errorf("unable to flush records, with get manifest file error: %w", err)
+	// }
+
+	// write the manifest file, TODO: Should be done via taking a lock once we maintain at central place
+	err = sst.manifestFile.AppendWithTmpFile([]byte(newFile.GetName()), false)
 	if err != nil {
-		log.Println("unable to write content in manifest-log file")
-		return errors.New("unable to flush records")
+		return fmt.Errorf("unable to flush records, with write manifest file error: %w", err)
 	}
+
+	// TODO: perform this operation under a lock
+	sst.offset = sst.offset + 1
 
 	return nil
 }
 
 func (sst *ssTable) Read(key string) (string, error) {
-	log.Println("[SST-READ START]")
-	log.Println()
-
+	// check if sstable is initialized or not
 	if sst == nil {
-		return "", errors.New("sstable is not initialized")
+		return constants.EMPTYSTRING, fmt.Errorf("sstable is not initialized")
 	}
 
-	val, err := cache.Cache.Get(sst.file.GetName())
-	if err == nil {
-		records, ok := val.([]Record)
-		if ok {
-			for _, r := range records {
-				if r.Key == key && r.IsDeleted {
-					return constants.EMPTYSTRING, errors.New(constants.ERRRESOURCEREMOVED)
-				}
+	var currOffset = sst.offset
+	if currOffset == 0 {
+		currOffset = 1
+	}
 
-				if r.Key == key {
+	for currOffset >= sst.lastOffset {
+		var file = file.NewFile(fmt.Sprintf("sst-%d.json", currOffset), sst.recordsDirPath)
+		records, err := sst._readSSTable(file)
+		if err != nil {
+			return constants.EMPTYSTRING, err
+		}
+
+		// return the respective value or precise error
+		for _, r := range records {
+			if r.Key == key {
+				if !r.IsDeleted {
 					return r.Value, nil
 				}
+
+				return constants.EMPTYSTRING, errors.New(constants.ERRRESOURCEREMOVED)
 			}
-
-			return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
 		}
-	}
 
-	if err != nil && err.Error() != constants.ERRNOTFOUND {
-		log.Println("unable to check from cache with err: ", err.Error())
-		return constants.EMPTYSTRING, errors.New("unable to check from cache")
-	}
-
-	contentBytes, err := sst.file.Read()
-	if err != nil {
-		log.Println("read file content error: ", err.Error())
-		return constants.EMPTYSTRING, errors.New("unable to read file")
-	}
-
-	records, err := readRecordsFileData(sst.file)
-	if err != nil {
-		log.Println("unable to read records error: ", err.Error())
-		return constants.EMPTYSTRING, errors.New("unable to read records")
-	}
-
-	err = json.Unmarshal(contentBytes, &records)
-	if err != nil {
-		fmt.Println("contentBytes: ", string(contentBytes))
-		fmt.Println("sst-file-name: ", sst.file.GetName())
-		fmt.Println("sst-file-path: ", sst.file.GetPath())
-		fmt.Println("sst-file-fullpath: ", sst.file.GetFileFullPath())
-
-		log.Println("unmarshal file content err: ", err.Error())
-		return constants.EMPTYSTRING, errors.New("unable to read file")
-	}
-	cache.Cache.PUT(sst.file.GetName(), records)
-
-	for _, r := range records {
-		if r.Key == key {
-			if !r.IsDeleted {
-				return r.Value, nil
-			}
-
-			return constants.EMPTYSTRING, errors.New(constants.ERRRESOURCEREMOVED)
-		}
+		currOffset--
 	}
 
 	return constants.EMPTYSTRING, errors.New(constants.ERRNOTFOUND)
 }
 
-// This optimizes the sstable storage and returns the latest offset
-func Optimize() (int, int, error) {
-	log.Println("[OPTIMIZE START]")
-	log.Println()
+func (sst *ssTable) _readSSTable(file *file.File) ([]models.Record, error) {
+	// get the content from the cache
+	records, err := sst.cache.Get(file.GetName())
+	if err != nil && err.Error() != constants.ERRNOTFOUND {
+		return nil, fmt.Errorf("unable to read content with cache err: %w", err)
+	}
 
+	// if the data is present in cache, serve it from there
+	if len(records) > 0 {
+		return records, nil
+	}
+
+	// read the file content if not present in the cache
+	records, err = readRecordsFileData(file)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read content with err: %w", err)
+	}
+
+	// since the content is new, keep it in the cache as frequently used
+	sst.cache.PUT(file.GetName(), records)
+
+	return records, nil
+}
+
+// This optimizes the sstable storage and returns the latest offset
+func (sst *ssTable) Optimize() (int, int, error) {
 	/* 1) Let's start with fetching all the data in-memory at once */
 
 	// Read Manifest File to get the list of existing files
-	var manifestFile = file.NewFile(manifestFileName, manifestLogFilePath)
+	var manifestFile = sst.manifestFile
 	files, err := readManifestFileData(manifestFile)
 	if err != nil {
 		log.Println("unable to read manifest file with err: ", err.Error())
@@ -206,9 +177,9 @@ func Optimize() (int, int, error) {
 	}
 	log.Println("read all files")
 
-	var list = make([][]Record, 0)
+	var list = make([][]models.Record, 0)
 	for _, fileName := range files {
-		var file = file.NewFile(fileName, ssTableRecordsDirPath)
+		var file = file.NewFile(fileName, sst.recordsDirPath)
 		records, err := readRecordsFileData(file)
 		if err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
@@ -259,7 +230,7 @@ func Optimize() (int, int, error) {
 	}
 	log.Println("added first elements priority queue from all files")
 
-	var finalRecord = make([]Record, 0)
+	var finalRecord = make([]models.Record, 0)
 	var overwrite bool = true
 	for !pq.IsEmpty() {
 		var p, err = pq.Pop()
@@ -302,7 +273,7 @@ func Optimize() (int, int, error) {
 			finalRecord = append(finalRecord, p.record)
 
 			if len(finalRecord) == 2000 {
-				err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile)
+				err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, sst.recordsDirPath)
 				if err != nil {
 					log.Printf("marshal records err: %v\n", err.Error())
 					return -1, -1, errors.New("unable to marshal records while compaction")
@@ -310,7 +281,7 @@ func Optimize() (int, int, error) {
 				log.Println("marshalled final records")
 
 				tempOffset = tempOffset + 1
-				finalRecord = make([]Record, 0)
+				finalRecord = make([]models.Record, 0)
 				overwrite = false
 			}
 		}
@@ -330,7 +301,7 @@ func Optimize() (int, int, error) {
 	log.Println("priority queue processing finished")
 
 	if len(finalRecord) > 0 {
-		err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile)
+		err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, sst.recordsDirPath)
 		if err != nil {
 			log.Printf("marshal records err: %v\n", err.Error())
 			return -1, -1, errors.New("unable to marshal records while compaction")
@@ -341,7 +312,7 @@ func Optimize() (int, int, error) {
 
 	// cleanup stale files
 	for _, fileName := range files {
-		var file = file.NewFile(fileName, ssTableRecordsDirPath)
+		var file = file.NewFile(fileName, sst.recordsDirPath)
 		if err = file.Remove(); err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
 			return -1, -1, errors.New("unable to read records")

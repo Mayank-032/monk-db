@@ -1,13 +1,9 @@
 package sstable
 
-type Record struct {
-	Key       string
-	Value     string
-	IsDeleted bool
-}
+import "monk-db/internal/models"
 
 type Pair struct {
-	record  Record
+	record  models.Record
 	listIdx int
 	idx     int
 }

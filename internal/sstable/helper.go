@@ -7,6 +7,7 @@ import (
 	"log"
 	"monk-db/internal/constants"
 	"monk-db/internal/io/file"
+	"monk-db/internal/models"
 	"strconv"
 	"strings"
 )
@@ -27,14 +28,13 @@ func readManifestFileData(manifestFile *file.File) ([]string, error) {
 	return fileContentPart[:len(fileContentPart)-1], nil
 }
 
-func readRecordsFileData(file *file.File) ([]Record, error) {
+func readRecordsFileData(file *file.File) ([]models.Record, error) {
 	contentBytes, err := file.Read()
 	if err != nil {
-		log.Println("read file content error: ", err.Error())
 		return nil, errors.New("unable to read file")
 	}
 
-	var records = make([]Record, 0)
+	var records = make([]models.Record, 0)
 	err = json.Unmarshal(contentBytes, &records)
 	if err != nil {
 		fmt.Println("contentBytes: ", string(contentBytes))
@@ -42,8 +42,7 @@ func readRecordsFileData(file *file.File) ([]Record, error) {
 		fmt.Println("sst-file-path: ", file.GetPath())
 		fmt.Println("sst-file-fullpath: ", file.GetFileFullPath())
 
-		log.Println("unmarshal file content err: ", err.Error())
-		return nil, errors.New("unable to read file")
+		return nil, err
 	}
 
 	return records, nil
@@ -69,7 +68,7 @@ func calculateOffset(lastFile string) (int, error) {
 	return lastOffset, nil
 }
 
-func createFileAndWriteData(offset int, overwrite bool, finalRecord []Record, manifestFile *file.File) error {
+func createFileAndWriteData(offset int, overwrite bool, finalRecord []models.Record, manifestFile *file.File, recordsDirPath string) error {
 	finalRecordB, err := json.MarshalIndent(finalRecord, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
 		log.Printf("marshal records err: %v\n", err.Error())
@@ -78,7 +77,7 @@ func createFileAndWriteData(offset int, overwrite bool, finalRecord []Record, ma
 	log.Println("marshalled final records")
 
 	var newFileName = fmt.Sprintf("sst-%d.json", (offset + 1))
-	var newFile = file.NewFile(newFileName, ssTableRecordsDirPath)
+	var newFile = file.NewFile(newFileName, recordsDirPath)
 	if err = newFile.Create(file.CREATE, true); err != nil {
 		log.Printf("create compact file err: %v\n", err.Error())
 		return errors.New("unable to create compact record file")

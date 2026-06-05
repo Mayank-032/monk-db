@@ -3,13 +3,10 @@ package storage
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"monk-db/internal/constants"
 	"monk-db/internal/io/file"
-	"monk-db/internal/sstable"
 	"strings"
-	"sync"
 )
 
 var (
@@ -39,11 +36,10 @@ type Metadata struct {
 }
 
 type Store struct {
-	data       map[string]Metadata
-	walFile    *file.File
-	lastOffset int
-	offset     int
-	size       int
+	data        map[string]Metadata
+	diskStorage IDiskStorage
+	walFile     *file.File
+	size        int
 }
 
 type WalRecord struct {
@@ -52,7 +48,13 @@ type WalRecord struct {
 	Value     string `json:"value"`
 }
 
-func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
+var s *Store
+
+func InitStore(
+	size int,
+	walFileName, walFilePath string,
+	diskStorage IDiskStorage,
+) (*Store, error) {
 	// 1. Create and Set the file
 	walFile, err := SetWALFilePathAndCreate(walFileName, walFilePath)
 	if err != nil {
@@ -60,53 +62,29 @@ func InitStore(size int, walFileName, walFilePath string) (*Store, error) {
 	}
 
 	var store = &Store{
-		data:    make(map[string]Metadata, size),
-		size:    size,
-		walFile: walFile,
+		data:        make(map[string]Metadata, size),
+		size:        size,
+		walFile:     walFile,
+		diskStorage: diskStorage,
 	}
-
-	var dataChan = make(chan map[string]Metadata, size)
-	var errorChan = make(chan error, 2)
-	var wg sync.WaitGroup
 
 	// 2.1 load data from wal file
-	wg.Add(1)
-	go loadFromWalFile(walFile, size, dataChan, errorChan, &wg)
-
-	var offsetChan = make(chan int, 1)
-
-	// 2.2 handle dangling files on disk
-	wg.Add(1)
-	go handleDanglingFileAndGetOffset(sstable.GetManifestLogfileMetadata(), sstable.GetRecordDirMetadata(), offsetChan, errorChan, &wg)
-
-	go func() {
-		wg.Wait()
-		close(errorChan)
-		close(dataChan)
-		close(offsetChan)
-	}()
-
-	for e := range errorChan {
-		if e != nil {
-			return nil, e
-		}
+	data, err := loadFromWalFile(walFile, size)
+	if err != nil {
+		return nil, err
 	}
 
-	var data = make(map[string]Metadata, 0)
-	for d := range dataChan {
-		data = d
+	if len(data) == 0 {
+		return store, nil
 	}
+	store.data = data
 
-	for o := range offsetChan {
-		fmt.Println("offset: ", o)
-		store.offset = o
-	}
-
-	if data != nil || len(data) != 0 {
-		store.data = data
-	}
-
+	s = store
 	return store, nil
+}
+
+func GetStore() *Store {
+	return s
 }
 
 func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
@@ -151,15 +129,10 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 	}
 
 	// fetch a new instance to store 2000 (or the given size) records in log files
-	sstable, err := sstable.NewSSTable(s.offset+1, constants.FLUSH)
-	if err != nil {
-		return false, err
-	}
-
 	var sstableRecords = convertToSSTableDataFormat(s.data)
 
 	// flush to disk if limit reached
-	err = sstable.Flush(sstableRecords)
+	err = s.diskStorage.Flush(sstableRecords)
 	if err != nil {
 		return false, err
 	}
@@ -177,7 +150,6 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 
 	// reset the memtable
 	s.data = make(map[string]Metadata, s.size)
-	s.offset = s.offset + 1
 
 	return true, nil
 }
@@ -211,42 +183,20 @@ func (s *Store) Get(key string) (string, error) {
 		return metadata.Val, nil
 	}
 
-	var c = s.offset
-	if s.lastOffset == 0 {
-		s.lastOffset = 1
-	}
+	val, err := s.diskStorage.Read(key)
+	if err != nil {
+		if err.Error() == constants.ERRRESOURCEREMOVED {
+			return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
+		}
 
-	for c >= s.lastOffset {
-		sstable, err := sstable.NewSSTable(c, constants.READ)
-		if err != nil {
+		if err.Error() != constants.ERRNOTFOUND {
 			return constants.EMPTYSTRING, err
 		}
+	}
 
-		val, err := sstable.Read(key)
-		if err != nil {
-			if err.Error() == constants.ERRRESOURCEREMOVED {
-				return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
-			}
-
-			if err.Error() != constants.ERRNOTFOUND {
-				return constants.EMPTYSTRING, err
-			}
-
-			c--
-			continue
-		}
-
-		if len(val) > 0 {
-			return val, nil
-		}
-
-		c--
+	if len(val) > 0 {
+		return val, nil
 	}
 
 	return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
-}
-
-func (s *Store) UpdateOffset(newOffset, lastOffset int) {
-	s.lastOffset = lastOffset
-	s.offset = newOffset
 }
