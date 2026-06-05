@@ -2,9 +2,9 @@ package main
 
 import (
 	"log"
+	"monk-db/boot"
 	"monk-db/internal/constants"
 	"monk-db/internal/io/file"
-	"monk-db/internal/storage"
 	"os"
 	"strings"
 	"time"
@@ -31,7 +31,12 @@ var (
 )
 
 func main() {
-	var store = storage.GetStore()
+	var store, err = boot.Initialize()
+	if err != nil {
+		log.Println("unable to bootup: ", err.Error())
+		os.Exit(1)
+		return
+	}
 
 	buffer, err := file.ParseFile("./put-delete.txt")
 	if err != nil {

@@ -1,4 +1,4 @@
-package main
+package boot
 
 // Manifest File based constants
 const (

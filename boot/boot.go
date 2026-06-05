@@ -1,4 +1,4 @@
-package main
+package boot
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func init() {
+func Initialize() (*storage.Store, error) {
 	// init cache
 	var storageCache = cache.NewLRUCache[[]models.Record](10)
 	log.Println("cache init success")
@@ -23,13 +23,13 @@ func init() {
 	diskStorage, err := sstable.NewSSTable(RECORDSDIRPATH, storageCache)
 	if err != nil {
 		log.Fatal("unable to init disk based storage")
-		return
+		return nil, err
 	}
 
 	err = diskStorage.SetManifestFile(MANIFESTFILENAME, MANIFESTFILEPATH)
 	if err != nil {
 		log.Fatal("unable to set manifest file")
-		return
+		return nil, err
 	}
 
 	var walFilepath = filepath.Join(GetBaseDir(), WALFILEPATH)
@@ -40,7 +40,7 @@ func init() {
 
 	if err != nil || store == nil {
 		log.Fatal("unable to init store")
-		return
+		return nil, err
 	}
 
 	err = handleDanglingFileAndGetOffset(diskStorage.GetManifestFile(), diskStorage.GetRecordsDirPath())
@@ -49,6 +49,8 @@ func init() {
 	}
 
 	log.Printf("memtable init success, total initialization time taken: %v ms\n", initStoreTimeDuration)
+
+	return store, nil
 }
 
 func GetBaseDir() string {

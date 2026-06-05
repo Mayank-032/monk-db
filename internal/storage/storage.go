@@ -48,8 +48,6 @@ type WalRecord struct {
 	Value     string `json:"value"`
 }
 
-var s *Store
-
 func InitStore(
 	size int,
 	walFileName, walFilePath string,
@@ -79,12 +77,7 @@ func InitStore(
 	}
 	store.data = data
 
-	s = store
 	return store, nil
-}
-
-func GetStore() *Store {
-	return s
 }
 
 func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
