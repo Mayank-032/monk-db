@@ -156,14 +156,14 @@ func (sst *ssTable) _readSSTable(file *file.File) ([]models.Record, error) {
 }
 
 // This optimizes the sstable storage and returns the latest offset
-func (sst *ssTable) Optimize() (int, int, error) {
+func (sst *ssTable) Optimize() error {
 	/* 1) Let's start with fetching all the data in-memory at once */
 
 	// Read Manifest File to get the list of existing files
 	var manifestFile = sst.manifestFile
 	files, err := readManifestFileData(manifestFile)
 	if err != nil {
-		return -1, -1, fmt.Errorf("unable to compact, with read manifest file err %w", err)
+		return fmt.Errorf("unable to compact, with read manifest file err %w", err)
 	}
 	log.Println("read all files")
 
@@ -173,7 +173,7 @@ func (sst *ssTable) Optimize() (int, int, error) {
 		records, err := readRecordsFileData(file)
 		if err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
-			return -1, -1, fmt.Errorf("unable to compact, with read records err %w", err)
+			return fmt.Errorf("unable to compact, with read records err %w", err)
 		}
 
 		list = append(list, records)
@@ -183,7 +183,7 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	// 2) calculate the new offset
 	lastOffset, err := calculateOffset(files[len(files)-1])
 	if err != nil {
-		return -1, -1, fmt.Errorf("unable to compact, with calculate offset err %w", err)
+		return fmt.Errorf("unable to compact, with calculate offset err %w", err)
 	}
 	log.Println("calculate new offset")
 
@@ -192,7 +192,7 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	// 3) Merge Records from all the files
 	tempOffset, err = sst._mergeAndWriteRecords(tempOffset, list, manifestFile)
 	if err != nil {
-		return -1, -1, fmt.Errorf("unable to compact, with merge records err: %w", err)
+		return fmt.Errorf("unable to compact, with merge records err: %w", err)
 	}
 
 	// time.Sleep(1 * time.Minute)
@@ -201,14 +201,17 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	for _, fileName := range files {
 		var file = file.NewFile(fileName, sst.recordsDirPath)
 		if err = file.Remove(); err != nil {
-			return -1, -1, fmt.Errorf("unable to compact, while cleanup stale files err %w", err)
+			return fmt.Errorf("unable to compact, while cleanup stale files err %w", err)
 		}
 	}
 	log.Println("cleanup the stale files")
 	log.Println("optimized_file_offset: ", (tempOffset + 1))
 	// time.Sleep(2 * time.Minute)
 
-	return tempOffset + 1, lastOffset, nil
+	sst.offset = tempOffset + 1
+	sst.lastOffset = lastOffset
+
+	return nil
 }
 
 func (sst *ssTable) _mergeAndWriteRecords(lastOffset int, list [][]models.Record, manifestFile *file.File) (int, error) {

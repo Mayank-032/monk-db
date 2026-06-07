@@ -194,3 +194,7 @@ func (s *Store) Get(key string) (string, error) {
 
 	return "NOT_FOUND", errors.New(constants.ERRNOTFOUND)
 }
+
+func (s *Store) Compact() error {
+	return s.diskStorage.Optimize()
+}

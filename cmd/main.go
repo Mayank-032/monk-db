@@ -129,6 +129,7 @@ func main() {
 		if totalUpdateOperations == 10000 {
 			// trigger compaction
 			var compactionStartTime = time.Now()
+			err = store.Compact()
 			var totalTimeTakenInMs = time.Since(compactionStartTime).Milliseconds()
 			totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
 			totalCompactOperations = totalCompactOperations + 1

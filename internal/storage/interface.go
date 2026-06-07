@@ -7,5 +7,5 @@ import (
 type IDiskStorage interface {
 	Flush(sstableRecords []models.Record) error
 	Read(key string) (string, error)
-	Optimize() (int, int, error)
+	Optimize() error
 }
