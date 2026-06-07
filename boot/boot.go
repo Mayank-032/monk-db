@@ -20,15 +20,9 @@ func Initialize() (*storage.Store, error) {
 	var storageCache = cache.NewLRUCache[[]models.Record](10)
 	log.Println("cache init success")
 
-	diskStorage, err := sstable.NewSSTable(RECORDSDIRPATH, storageCache)
+	diskStorage, err := sstable.NewSSTable(RECORDSDIRPATH, storageCache, MANIFESTFILENAME, MANIFESTFILEPATH)
 	if err != nil {
 		log.Fatal("unable to init disk based storage")
-		return nil, err
-	}
-
-	err = diskStorage.SetManifestFile(MANIFESTFILENAME, MANIFESTFILEPATH)
-	if err != nil {
-		log.Fatal("unable to set manifest file")
 		return nil, err
 	}
 

@@ -22,37 +22,29 @@ type ssTable struct {
 	recordsDirPath string
 }
 
-func NewSSTable(recordsDirPath string, cache *cache.Cache[[]models.Record]) (*ssTable, error) {
+func NewSSTable(
+	recordsDirPath string,
+	cache *cache.Cache[[]models.Record],
+	manifestFilename, manifestFilepath string,
+) (*ssTable, error) {
 	err := os.Mkdir(recordsDirPath, constants.DIRPERMISSION)
 	if err != nil && !errors.Is(err, os.ErrExist) {
-		log.Printf("create records dir err: %v\n", err.Error())
-		return nil, errors.New("unable to create records dir")
+		log.Println("create records dir")
+		return nil, err
 	}
 
-	return &ssTable{
+	var sst = &ssTable{
 		cache:          cache,
 		recordsDirPath: recordsDirPath,
-	}, nil
-}
-
-func (sst *ssTable) SetManifestFile(name, path string) error {
-	var manifestFile = file.NewFile(name, path)
-	err := manifestFile.Create(file.CREATE, true)
-	if err != nil {
-		log.Printf("create manifest file err: %v\n", err.Error())
-		return errors.New("unable to create manifest file")
 	}
 
-	sst.manifestFile = manifestFile
-	return nil
-}
+	err = sst.SetManifestFile(manifestFilename, manifestFilepath)
+	if err != nil {
+		log.Println("unable to set manifest file")
+		return nil, err
+	}
 
-func (sst *ssTable) GetManifestFile() *file.File {
-	return sst.manifestFile
-}
-
-func (sst *ssTable) GetRecordsDirPath() string {
-	return sst.recordsDirPath
+	return sst, nil
 }
 
 // it will convert to respective data structure and flush it to the log file
@@ -70,7 +62,6 @@ func (sst *ssTable) Flush(sstableRecords []models.Record) error {
 	// marshal the json content
 	recordBytes, err := json.MarshalIndent(sstableRecords, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
-		log.Printf("marshal records err: %v\n", err.Error())
 		return fmt.Errorf("unable to flush records, with marshalling error: %w", err)
 	}
 
@@ -120,7 +111,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 		var file = file.NewFile(fmt.Sprintf("sst-%d.json", currOffset), sst.recordsDirPath)
 		records, err := sst._readSSTable(file)
 		if err != nil {
-			return constants.EMPTYSTRING, err
+			return constants.EMPTYSTRING, fmt.Errorf("unable to read sstable: %w", err)
 		}
 
 		// return the respective value or precise error
@@ -172,8 +163,7 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	var manifestFile = sst.manifestFile
 	files, err := readManifestFileData(manifestFile)
 	if err != nil {
-		log.Println("unable to read manifest file with err: ", err.Error())
-		return -1, -1, errors.New("unable to read file")
+		return -1, -1, fmt.Errorf("unable to compact, with read manifest file err %w", err)
 	}
 	log.Println("read all files")
 
@@ -183,7 +173,7 @@ func (sst *ssTable) Optimize() (int, int, error) {
 		records, err := readRecordsFileData(file)
 		if err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
-			return -1, -1, errors.New("unable to read records")
+			return -1, -1, fmt.Errorf("unable to compact, with read records err %w", err)
 		}
 
 		list = append(list, records)
@@ -193,13 +183,38 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	// 2) calculate the new offset
 	lastOffset, err := calculateOffset(files[len(files)-1])
 	if err != nil {
-		return -1, -1, errors.New("unable to convert offset to int")
+		return -1, -1, fmt.Errorf("unable to compact, with calculate offset err %w", err)
 	}
 	log.Println("calculate new offset")
 
 	var tempOffset = lastOffset
 
-	/* 3) Perform merge k-sorted-list algorithm. */
+	// 3) Merge Records from all the files
+	tempOffset, err = sst._mergeAndWriteRecords(tempOffset, list, manifestFile)
+	if err != nil {
+		return -1, -1, fmt.Errorf("unable to compact, with merge records err: %w", err)
+	}
+
+	// time.Sleep(1 * time.Minute)
+
+	// 4) cleanup stale files
+	for _, fileName := range files {
+		var file = file.NewFile(fileName, sst.recordsDirPath)
+		if err = file.Remove(); err != nil {
+			return -1, -1, fmt.Errorf("unable to compact, while cleanup stale files err %w", err)
+		}
+	}
+	log.Println("cleanup the stale files")
+	log.Println("optimized_file_offset: ", (tempOffset + 1))
+	// time.Sleep(2 * time.Minute)
+
+	return tempOffset + 1, lastOffset, nil
+}
+
+func (sst *ssTable) _mergeAndWriteRecords(lastOffset int, list [][]models.Record, manifestFile *file.File) (int, error) {
+	var tempOffset = lastOffset
+
+	/* 1) Create a new heap */
 	var pq = heap.NewHeap(func(p1, p2 Pair) (comp bool) {
 		var val1 string = p1.record.Key
 		var val2 string = p2.record.Key
@@ -218,6 +233,7 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	})
 	log.Println("created priority queue")
 
+	/* 2) Push first records from each list in a new heap */
 	for i, record := range list {
 		pq.Push(Pair{
 			record:  record[0],
@@ -230,25 +246,26 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	}
 	log.Println("added first elements priority queue from all files")
 
+	/* 3) Iterate over the heap and for each 2000 merged records, create a file in records dir and update the manifest file */
 	var finalRecord = make([]models.Record, 0)
 	var overwrite bool = true
 	for !pq.IsEmpty() {
 		var p, err = pq.Pop()
 		if err != nil {
-			return -1, -1, err
+			return -1, err
 		}
 
 		// remove the remaining elements
 		for !pq.IsEmpty() {
 			var topEle, err = pq.Peek()
 			if err != nil {
-				return -1, -1, err
+				return -1, err
 			}
 
 			if p.record.Key == topEle.record.Key {
 				topEle, err = pq.Pop()
 				if err != nil {
-					return -1, -1, err
+					return -1, err
 				}
 
 				if topEle.idx+1 >= len(list[topEle.listIdx]) {
@@ -275,8 +292,7 @@ func (sst *ssTable) Optimize() (int, int, error) {
 			if len(finalRecord) == 2000 {
 				err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, sst.recordsDirPath)
 				if err != nil {
-					log.Printf("marshal records err: %v\n", err.Error())
-					return -1, -1, errors.New("unable to marshal records while compaction")
+					return -1, fmt.Errorf("unable to compact into multiple files %w", err)
 				}
 				log.Println("marshalled final records")
 
@@ -300,27 +316,14 @@ func (sst *ssTable) Optimize() (int, int, error) {
 	}
 	log.Println("priority queue processing finished")
 
+	// 4) If any unfinished records left, create create the file in records dir and update manifest
 	if len(finalRecord) > 0 {
-		err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, sst.recordsDirPath)
+		err := createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, sst.recordsDirPath)
 		if err != nil {
-			log.Printf("marshal records err: %v\n", err.Error())
-			return -1, -1, errors.New("unable to marshal records while compaction")
+			return -1, fmt.Errorf("unable to compact, with marshal err %w", err)
 		}
 		log.Println("marshalled final records")
 	}
-	// time.Sleep(1 * time.Minute)
 
-	// cleanup stale files
-	for _, fileName := range files {
-		var file = file.NewFile(fileName, sst.recordsDirPath)
-		if err = file.Remove(); err != nil {
-			log.Println("unable to records of the file with err: ", err.Error())
-			return -1, -1, errors.New("unable to read records")
-		}
-	}
-	log.Println("cleanup the stale files")
-	log.Println("optimized_file_offset: ", (tempOffset + 1))
-	// time.Sleep(2 * time.Minute)
-
-	return tempOffset + 1, lastOffset, nil
+	return lastOffset, nil
 }

@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"monk-db/internal/constants"
 	"monk-db/internal/io/file"
@@ -101,13 +102,13 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 	}
 	walRecordBytes, err := json.Marshal(walRecord)
 	if err != nil {
-		return false, errors.New("unable to marshal data")
+		return false, fmt.Errorf("unable to put while marshal wal records err %w", err)
 	}
 	walRecordBytes = append(walRecordBytes, []byte("\n")...)
 
 	err = s.walFile.Write(walRecordBytes, file.APPEND, true)
 	if err != nil {
-		return false, errors.New("unable to write wal")
+		return false, fmt.Errorf("unable to put while write to wal file err %w", err)
 	}
 
 	s.data[key] = Metadata{
@@ -127,18 +128,18 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 	// flush to disk if limit reached
 	err = s.diskStorage.Flush(sstableRecords)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("unable to put while flush err %w", err)
 	}
 
 	// reset the file
 	err = s.walFile.Reset(true)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("unable to put while wal file reset err %w", err)
 	}
 
 	err = s.walFile.Close()
 	if err != nil {
-		return false, errors.New("unable to close file")
+		return false, fmt.Errorf("unable to put while wal file close err %w", err)
 	}
 
 	// reset the memtable
@@ -152,7 +153,7 @@ func (s *Store) Delete(key string) (bool, error) {
 
 	val, err := s.Get(key)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("unable to delete from disk while read err %w", err)
 	}
 
 	return s.Put(key, val, true)
@@ -183,7 +184,7 @@ func (s *Store) Get(key string) (string, error) {
 		}
 
 		if err.Error() != constants.ERRNOTFOUND {
-			return constants.EMPTYSTRING, err
+			return constants.EMPTYSTRING, fmt.Errorf("unable to read from disk with err %w", err)
 		}
 	}
 
