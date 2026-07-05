@@ -22,24 +22,22 @@ func Initialize() (*storage.Store, error) {
 
 	diskStorage, err := sstable.NewSSTable(RECORDSDIRPATH, storageCache, MANIFESTFILENAME, MANIFESTFILEPATH)
 	if err != nil {
-		log.Fatal("unable to init disk based storage")
 		return nil, err
 	}
 
-	var walFilepath = filepath.Join(GetBaseDir(), WALFILEPATH)
+	var walFilepath = filepath.Join(GetBaseDir(true), WALFILEPATH)
 
 	var initStoreStartTime = time.Now()
 	store, err := storage.InitStore(MEMTABLESIZE, WALFILENAME, walFilepath, diskStorage)
 	var initStoreTimeDuration = time.Since(initStoreStartTime).Milliseconds()
 
 	if err != nil || store == nil {
-		log.Fatal("unable to init store")
 		return nil, err
 	}
 
 	err = handleDanglingFileAndGetOffset(diskStorage.GetManifestFile(), diskStorage.GetRecordsDirPath())
 	if err != nil {
-		log.Fatal("unable to clean dangling files: ", err)
+		return nil, err
 	}
 
 	log.Printf("memtable init success, total initialization time taken: %v ms\n", initStoreTimeDuration)
@@ -47,11 +45,18 @@ func Initialize() (*storage.Store, error) {
 	return store, nil
 }
 
-func GetBaseDir() string {
-	_, filename, _, _ := runtime.Caller(0)
-	baseDir := filepath.Dir(filename)
+func GetBaseDir(isRootDir bool) string {
+	if isRootDir {
+		rootDir, err := os.Getwd()
+		if err != nil {
+			return "."
+		}
 
-	return baseDir
+		return rootDir
+	}
+
+	_, filename, _, _ := runtime.Caller(0)
+	return filepath.Dir(filename)
 }
 
 func handleDanglingFileAndGetOffset(manifestFile *file.File, recordDir string) error {

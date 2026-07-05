@@ -106,10 +106,14 @@ func (f *File) Create(op OperationType, isSync bool) error {
 		return errors.New("invalid file")
 	}
 
-	var err error
+	var (
+		fileInfo os.FileInfo
+		err      error
+	)
+
 	switch op {
 	case CREATE:
-		fileInfo, err := os.Stat(f.filePathWithName)
+		fileInfo, err = os.Stat(f.filePathWithName)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("unable to get stat of the file: %w", err)
 		}
@@ -118,11 +122,11 @@ func (f *File) Create(op OperationType, isSync bool) error {
 			return nil
 		}
 
-		f.file, err = os.OpenFile(f.filePathWithName, os.O_CREATE, constants.FILEPERMISSION)
+		f.file, err = os.OpenFile(f.filePathWithName, os.O_CREATE|os.O_RDWR, constants.FILEPERMISSION)
 	case TRUNC:
-		f.file, err = os.OpenFile(f.filePathWithName, os.O_TRUNC, constants.FILEPERMISSION)
+		f.file, err = os.OpenFile(f.filePathWithName, os.O_TRUNC|os.O_RDWR, constants.FILEPERMISSION)
 	default:
-		fileInfo, err := os.Stat(f.filePathWithName)
+		fileInfo, err = os.Stat(f.filePathWithName)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("unable to get stat of the file: %w", err)
 		}

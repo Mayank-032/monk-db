@@ -19,5 +19,5 @@ const (
 // wal file based constants
 const (
 	WALFILENAME = "wal.db"
-	WALFILEPATH = "./internal/storage"
+	WALFILEPATH = "/internal/storage"
 )

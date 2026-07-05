@@ -205,18 +205,18 @@ func (sst *ssTable) Optimize() error {
 		}
 	}
 	log.Println("cleanup the stale files")
-	log.Println("optimized_file_offset: ", (tempOffset + 1))
+	log.Println("optimized_file_new_offset: ", (tempOffset))
+	log.Println("optimized_file_last_offset: ", (lastOffset))
+
 	// time.Sleep(2 * time.Minute)
 
-	sst.offset = tempOffset + 1
+	sst.offset = tempOffset
 	sst.lastOffset = lastOffset
 
 	return nil
 }
 
-func (sst *ssTable) _mergeAndWriteRecords(lastOffset int, list [][]models.Record, manifestFile *file.File) (int, error) {
-	var tempOffset = lastOffset
-
+func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record, manifestFile *file.File) (int, error) {
 	/* 1) Create a new heap */
 	var pq = heap.NewHeap(func(p1, p2 Pair) (comp bool) {
 		var val1 string = p1.record.Key
@@ -297,7 +297,6 @@ func (sst *ssTable) _mergeAndWriteRecords(lastOffset int, list [][]models.Record
 				if err != nil {
 					return -1, fmt.Errorf("unable to compact into multiple files %w", err)
 				}
-				log.Println("marshalled final records")
 
 				tempOffset = tempOffset + 1
 				finalRecord = make([]models.Record, 0)
@@ -326,7 +325,8 @@ func (sst *ssTable) _mergeAndWriteRecords(lastOffset int, list [][]models.Record
 			return -1, fmt.Errorf("unable to compact, with marshal err %w", err)
 		}
 		log.Println("marshalled final records")
+		tempOffset = tempOffset + 1
 	}
 
-	return lastOffset, nil
+	return tempOffset, nil
 }

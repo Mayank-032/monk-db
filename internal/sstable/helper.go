@@ -35,6 +35,11 @@ func readRecordsFileData(file *file.File) ([]models.Record, error) {
 	}
 
 	var records = make([]models.Record, 0)
+
+	if len(contentBytes) == 0 {
+		return records, nil
+	}
+
 	err = json.Unmarshal(contentBytes, &records)
 	if err != nil {
 		fmt.Println("contentBytes: ", string(contentBytes))
