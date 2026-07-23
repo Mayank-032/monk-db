@@ -41,6 +41,7 @@ type Store struct {
 	diskStorage IDiskStorage
 	walFile     *file.File
 	size        int
+	fileLimit   int
 }
 
 type WalRecord struct {
@@ -50,7 +51,7 @@ type WalRecord struct {
 }
 
 func InitStore(
-	size int,
+	size, fileLimit int,
 	walFileName, walFilePath string,
 	diskStorage IDiskStorage,
 ) (*Store, error) {
@@ -63,6 +64,7 @@ func InitStore(
 	var store = &Store{
 		data:        make(map[string]Metadata, size),
 		size:        size,
+		fileLimit:   fileLimit,
 		walFile:     walFile,
 		diskStorage: diskStorage,
 	}
@@ -197,4 +199,13 @@ func (s *Store) Get(key string) (string, error) {
 
 func (s *Store) Compact() error {
 	return s.diskStorage.Optimize()
+}
+
+func (s *Store) IsCompactionRequired() (bool, error) {
+	totalFiles, err := s.diskStorage.CountFiles()
+	if err != nil {
+		return false, err
+	}
+
+	return (totalFiles == s.fileLimit), nil
 }

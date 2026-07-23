@@ -5,12 +5,16 @@ const (
 	PUT    = "PUT"
 	GET    = "GET"
 	DELETE = "DELETE"
+
+	MEMTABLE_SIZE = 2000
 )
 
 // SSTABLE OPERATIONS
 const (
 	FLUSH = "FLUSH"
 	READ  = "READ"
+
+	SSTABLE_MAXFILELIMIT = 10
 )
 
 // FILE OPERATIONS

@@ -21,7 +21,3 @@ func (sst *ssTable) SetManifestFile(name, path string) error {
 func (sst *ssTable) GetManifestFile() *file.File {
 	return sst.manifestFile
 }
-
-func (sst *ssTable) GetRecordsDirPath() string {
-	return sst.recordsDirPath
-}

@@ -3,6 +3,7 @@ package boot
 import (
 	"fmt"
 	"log"
+	"monk-db/internal/constants"
 	cache "monk-db/internal/ds/lru_cache"
 	"monk-db/internal/io/file"
 	"monk-db/internal/models"
@@ -20,22 +21,22 @@ func Initialize() (*storage.Store, error) {
 	var storageCache = cache.NewLRUCache[[]models.Record](10)
 	log.Println("cache init success")
 
-	diskStorage, err := sstable.NewSSTable(RECORDSDIRPATH, storageCache, MANIFESTFILENAME, MANIFESTFILEPATH)
+	diskStorage, err := sstable.NewSSTable(storageCache, constants.MANIFEST_FILENAME, constants.MANIFEST_FILEPATH)
 	if err != nil {
 		return nil, err
 	}
 
-	var walFilepath = filepath.Join(GetBaseDir(true), WALFILEPATH)
+	var walFilepath = filepath.Join(GetBaseDir(true), constants.WAL_FILEPATH)
 
 	var initStoreStartTime = time.Now()
-	store, err := storage.InitStore(MEMTABLESIZE, WALFILENAME, walFilepath, diskStorage)
+	store, err := storage.InitStore(constants.MEMTABLE_SIZE, constants.SSTABLE_MAXFILELIMIT, constants.WAL_FILENAME, walFilepath, diskStorage)
 	var initStoreTimeDuration = time.Since(initStoreStartTime).Milliseconds()
 
 	if err != nil || store == nil {
 		return nil, err
 	}
 
-	err = handleDanglingFileAndGetOffset(diskStorage.GetManifestFile(), diskStorage.GetRecordsDirPath())
+	err = handleDanglingFileAndGetOffset(diskStorage.GetManifestFile(), constants.RECORDS_DIRPATH)
 	if err != nil {
 		return nil, err
 	}

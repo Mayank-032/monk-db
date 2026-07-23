@@ -125,8 +125,15 @@ func main() {
 			return
 		}
 
-		// For every 10,000 requests completion, trigger compaction
-		if totalUpdateOperations == 10000 {
+		// For every file limit reached requests, trigger compaction
+		isCompactionRequired, err := store.IsCompactionRequired()
+		if err != nil {
+			log.Println("unable to perform compaction: ", err.Error())
+			os.Exit(1)
+			return
+		}
+
+		if isCompactionRequired {
 			// trigger compaction
 			var compactionStartTime = time.Now()
 			err = store.Compact()

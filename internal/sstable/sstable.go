@@ -15,27 +15,24 @@ import (
 )
 
 type ssTable struct {
-	offset         int
-	lastOffset     int
-	cache          *cache.Cache[[]models.Record]
-	manifestFile   *file.File
-	recordsDirPath string
+	offset       int
+	lastOffset   int
+	cache        *cache.Cache[[]models.Record]
+	manifestFile *file.File
 }
 
 func NewSSTable(
-	recordsDirPath string,
 	cache *cache.Cache[[]models.Record],
 	manifestFilename, manifestFilepath string,
 ) (*ssTable, error) {
-	err := os.Mkdir(recordsDirPath, constants.DIRPERMISSION)
+	err := os.Mkdir(constants.RECORDS_DIRPATH, constants.DIRPERMISSION)
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		log.Println("create records dir")
 		return nil, err
 	}
 
 	var sst = &ssTable{
-		cache:          cache,
-		recordsDirPath: recordsDirPath,
+		cache: cache,
 	}
 
 	err = sst.SetManifestFile(manifestFilename, manifestFilepath)
@@ -66,7 +63,8 @@ func (sst *ssTable) Flush(sstableRecords []models.Record) error {
 	}
 
 	// create a file with new offset
-	var newFile = file.NewFile(fmt.Sprintf("sst-%v.json", sst.offset+1), sst.recordsDirPath)
+	var currLevelPath = constants.RECORDS_DIRPATH + constants.LEVELZERO_PATH
+	var newFile = file.NewFile(fmt.Sprintf("sst-%v.json", sst.offset+1), currLevelPath)
 	err = newFile.Create(file.DEFAULT, true)
 	if err != nil {
 		return fmt.Errorf("unable to flush records, with create file error: %w", err)
@@ -78,14 +76,8 @@ func (sst *ssTable) Flush(sstableRecords []models.Record) error {
 		return fmt.Errorf("unable to flush records, with write file error: %w", err)
 	}
 
-	// read the manifest file, TODO: Update the fetching of manifest file from central place
-	// err = manifestFile.Get()
-	// if err != nil {
-	// 	return fmt.Errorf("unable to flush records, with get manifest file error: %w", err)
-	// }
-
-	// write the manifest file, TODO: Should be done via taking a lock once we maintain at central place
-	err = sst.manifestFile.AppendWithTmpFile([]byte(newFile.GetName()), false)
+	// write the manifest file
+	err = sst.manifestFile.AppendWithTmpFile(fmt.Appendf([]byte{}, "%v/%v", constants.LEVELZERO_PATH, newFile.GetName()), false)
 	if err != nil {
 		return fmt.Errorf("unable to flush records, with write manifest file error: %w", err)
 	}
@@ -108,7 +100,7 @@ func (sst *ssTable) Read(key string) (string, error) {
 	}
 
 	for currOffset >= sst.lastOffset {
-		var file = file.NewFile(fmt.Sprintf("sst-%d.json", currOffset), sst.recordsDirPath)
+		var file = file.NewFile(fmt.Sprintf("sst-%d.json", currOffset), constants.RECORDS_DIRPATH)
 		records, err := sst._readSSTable(file)
 		if err != nil {
 			return constants.EMPTYSTRING, fmt.Errorf("unable to read sstable: %w", err)
@@ -157,6 +149,7 @@ func (sst *ssTable) _readSSTable(file *file.File) ([]models.Record, error) {
 
 // This optimizes the sstable storage and returns the latest offset
 func (sst *ssTable) Optimize() error {
+	log.Println("Optimization Started")
 	/* 1) Let's start with fetching all the data in-memory at once */
 
 	// Read Manifest File to get the list of existing files
@@ -165,11 +158,12 @@ func (sst *ssTable) Optimize() error {
 	if err != nil {
 		return fmt.Errorf("unable to compact, with read manifest file err %w", err)
 	}
-	log.Println("read all files")
+	log.Println("read manifest file")
 
 	var list = make([][]models.Record, 0)
 	for _, fileName := range files {
-		var file = file.NewFile(fileName, sst.recordsDirPath)
+		// read each file
+		var file = file.NewFile(fileName, constants.RECORDS_DIRPATH)
 		records, err := readRecordsFileData(file)
 		if err != nil {
 			log.Println("unable to records of the file with err: ", err.Error())
@@ -178,7 +172,7 @@ func (sst *ssTable) Optimize() error {
 
 		list = append(list, records)
 	}
-	log.Println("unmarshalled all files")
+	log.Println("maintain list of records in memory of all files")
 
 	// 2) calculate the new offset
 	lastOffset, err := calculateOffset(files[len(files)-1])
@@ -195,11 +189,9 @@ func (sst *ssTable) Optimize() error {
 		return fmt.Errorf("unable to compact, with merge records err: %w", err)
 	}
 
-	// time.Sleep(1 * time.Minute)
-
 	// 4) cleanup stale files
 	for _, fileName := range files {
-		var file = file.NewFile(fileName, sst.recordsDirPath)
+		var file = file.NewFile(fileName, constants.RECORDS_DIRPATH)
 		if err = file.Remove(); err != nil {
 			return fmt.Errorf("unable to compact, while cleanup stale files err %w", err)
 		}
@@ -293,7 +285,7 @@ func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record
 			finalRecord = append(finalRecord, p.record)
 
 			if len(finalRecord) == 2000 {
-				err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, sst.recordsDirPath)
+				err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, constants.RECORDS_DIRPATH)
 				if err != nil {
 					return -1, fmt.Errorf("unable to compact into multiple files %w", err)
 				}
@@ -320,7 +312,7 @@ func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record
 
 	// 4) If any unfinished records left, create create the file in records dir and update manifest
 	if len(finalRecord) > 0 {
-		err := createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, sst.recordsDirPath)
+		err := createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, constants.RECORDS_DIRPATH)
 		if err != nil {
 			return -1, fmt.Errorf("unable to compact, with marshal err %w", err)
 		}
@@ -329,4 +321,14 @@ func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record
 	}
 
 	return tempOffset, nil
+}
+
+func (sst *ssTable) CountFiles() (int, error) {
+	// read manifest file
+	files, err := readManifestFileData(sst.manifestFile)
+	if err != nil {
+		return 0, fmt.Errorf("unable to read manifest file with err: %w", err)
+	}
+
+	return len(files), nil
 }
