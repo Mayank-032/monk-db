@@ -148,21 +148,41 @@ func (sst *ssTable) _readSSTable(file *file.File) ([]models.Record, error) {
 }
 
 // This optimizes the sstable storage and returns the latest offset
-func (sst *ssTable) Optimize() error {
+func (sst *ssTable) Optimize(level int) error {
 	log.Println("Optimization Started")
-	/* 1) Let's start with fetching all the data in-memory at once */
 
-	// Read Manifest File to get the list of existing files
+	/* 1) Let's start with fetching all the data in-memory at once */
+	var (
+		files = make([]string, 0)
+		err   error
+	)
+
+	// Read Manifest File to get the list of existing files at current level
 	var manifestFile = sst.manifestFile
-	files, err := readManifestFileData(manifestFile)
-	if err != nil {
-		return fmt.Errorf("unable to compact, with read manifest file err %w", err)
+
+	switch level {
+	case 0:
+		files, err = readManifestFileData(manifestFile, level)
+		if err != nil {
+			return fmt.Errorf("unable to compact, with read manifest file for current level err %w", err)
+		}
+
+		levelOneFiles, err := readManifestFileData(manifestFile, level+1)
+		if err != nil {
+			return fmt.Errorf("unable to compact, with read manifest file for current level+1 err %w", err)
+		}
+
+		files = append(files, levelOneFiles...)
+	default:
+		files, err = readManifestFileDataForHigherLevels(manifestFile, level, level+1)
+		if err != nil {
+			return fmt.Errorf("unable to compact, with read manifest file for higher levels err %w", err)
+		}
 	}
-	log.Println("read manifest file")
 
 	var list = make([][]models.Record, 0)
 	for _, fileName := range files {
-		// read each file
+		// read current level file
 		var file = file.NewFile(fileName, constants.RECORDS_DIRPATH)
 		records, err := readRecordsFileData(file)
 		if err != nil {
@@ -184,7 +204,7 @@ func (sst *ssTable) Optimize() error {
 	var tempOffset = lastOffset
 
 	// 3) Merge Records from all the files
-	tempOffset, err = sst._mergeAndWriteRecords(tempOffset, list, manifestFile)
+	tempOffset, err = sst._mergeAndWriteRecords(level, tempOffset, list, manifestFile)
 	if err != nil {
 		return fmt.Errorf("unable to compact, with merge records err: %w", err)
 	}
@@ -208,7 +228,7 @@ func (sst *ssTable) Optimize() error {
 	return nil
 }
 
-func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record, manifestFile *file.File) (int, error) {
+func (sst *ssTable) _mergeAndWriteRecords(level, tempOffset int, list [][]models.Record, manifestFile *file.File) (int, error) {
 	/* 1) Create a new heap */
 	var pq = heap.NewHeap(func(p1, p2 Pair) (comp bool) {
 		var val1 string = p1.record.Key
@@ -285,7 +305,7 @@ func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record
 			finalRecord = append(finalRecord, p.record)
 
 			if len(finalRecord) == 2000 {
-				err = createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, constants.RECORDS_DIRPATH)
+				err = createFileAndWriteData(level, tempOffset, overwrite, finalRecord, manifestFile)
 				if err != nil {
 					return -1, fmt.Errorf("unable to compact into multiple files %w", err)
 				}
@@ -312,7 +332,7 @@ func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record
 
 	// 4) If any unfinished records left, create create the file in records dir and update manifest
 	if len(finalRecord) > 0 {
-		err := createFileAndWriteData(tempOffset, overwrite, finalRecord, manifestFile, constants.RECORDS_DIRPATH)
+		err := createFileAndWriteData(level, tempOffset, overwrite, finalRecord, manifestFile)
 		if err != nil {
 			return -1, fmt.Errorf("unable to compact, with marshal err %w", err)
 		}
@@ -323,9 +343,9 @@ func (sst *ssTable) _mergeAndWriteRecords(tempOffset int, list [][]models.Record
 	return tempOffset, nil
 }
 
-func (sst *ssTable) CountFiles() (int, error) {
+func (sst *ssTable) CountFiles(level int) (int, error) {
 	// read manifest file
-	files, err := readManifestFileData(sst.manifestFile)
+	files, err := readManifestFileData(sst.manifestFile, level)
 	if err != nil {
 		return 0, fmt.Errorf("unable to read manifest file with err: %w", err)
 	}

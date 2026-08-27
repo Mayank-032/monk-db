@@ -126,32 +126,20 @@ func main() {
 		}
 
 		// For every file limit reached requests, trigger compaction
-		isCompactionRequired, err := store.IsCompactionRequired()
+		var compactionStartTime = time.Now()
+		err = store.CompactIfRequired()
+		var totalTimeTakenInMs = time.Since(compactionStartTime).Milliseconds()
+
 		if err != nil {
-			log.Println("unable to perform compaction: ", err.Error())
+			log.Printf("OPTIMIZE OPERATION failed with err: %v\n", err.Error())
 			os.Exit(1)
 			return
 		}
 
-		if isCompactionRequired {
-			// trigger compaction
-			var compactionStartTime = time.Now()
-			err = store.Compact()
-			var totalTimeTakenInMs = time.Since(compactionStartTime).Milliseconds()
-			totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
-			totalCompactOperations = totalCompactOperations + 1
-
-			if err != nil {
-				log.Printf("OPTIMIZE OPERATION failed with err: %v\n", err.Error())
-				os.Exit(1)
-			}
-
-			// store.UpdateOffset(newOffset, lastOffset)
-
-			// reset counter
-			totalUpdateOperations = 0
-		}
+		totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
+		totalCompactOperations = totalCompactOperations + 1
 	}
+
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()
 
 	var avgTimeTakenForPutOperationsInMs = float64(totalPutTimeInMs) / float64(totalPutOperations)

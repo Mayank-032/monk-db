@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func readManifestFileData(manifestFile *file.File) ([]string, error) {
+func readManifestFileData(manifestFile *file.File, level int) ([]string, error) {
 	fileContent, err := manifestFile.Read()
 	if err != nil {
 		return nil, err
@@ -25,7 +25,25 @@ func readManifestFileData(manifestFile *file.File) ([]string, error) {
 		return nil, err
 	}
 
-	return fileContentPart[:len(fileContentPart)-1], nil
+	var files = fileContentPart[:len(fileContentPart)-1]
+
+	if level < 0 {
+		return files, nil
+	}
+
+	var currLevelPath string = fmt.Sprintf("l%d", level)
+	var currLevelFiles = make([]string, 0)
+	for _, file := range files {
+		if strings.Contains(file, currLevelPath) {
+			currLevelFiles = append(currLevelFiles, file)
+		}
+	}
+
+	return currLevelFiles, nil
+}
+
+func readManifestFileDataForHigherLevels(manifestFle *file.File, level, levelPlusOne int) ([]string, error) {
+	return []string{}, nil
 }
 
 func readRecordsFileData(file *file.File) ([]models.Record, error) {
@@ -73,7 +91,7 @@ func calculateOffset(lastFile string) (int, error) {
 	return lastOffset, nil
 }
 
-func createFileAndWriteData(offset int, overwrite bool, finalRecord []models.Record, manifestFile *file.File, recordsDirPath string) error {
+func createFileAndWriteData(level, offset int, overwrite bool, finalRecord []models.Record, manifestFile *file.File) error {
 	finalRecordB, err := json.MarshalIndent(finalRecord, constants.EMPTYSTRING, constants.MARSHALSPACING)
 	if err != nil {
 		log.Printf("marshal records err: %v\n", err.Error())
@@ -81,8 +99,11 @@ func createFileAndWriteData(offset int, overwrite bool, finalRecord []models.Rec
 	}
 	log.Println("marshalled final records")
 
-	var newFileName = fmt.Sprintf("sst-%d.json", (offset + 1))
-	var newFile = file.NewFile(newFileName, recordsDirPath)
+	var firstKey = finalRecord[0]
+	var lastKey = finalRecord[len(finalRecord)-1]
+
+	var newFileName = fmt.Sprintf("%s-%s: sst-%d.json", firstKey.Key, lastKey.Key, (offset + 1))
+	var newFile = file.NewFile(newFileName, fmt.Sprintf("%s/%d", constants.RECORDS_DIRPATH, level))
 	if err = newFile.Create(file.CREATE, true); err != nil {
 		log.Printf("create compact file err: %v\n", err.Error())
 		return errors.New("unable to create compact record file")

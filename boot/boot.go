@@ -29,7 +29,7 @@ func Initialize() (*storage.Store, error) {
 	var walFilepath = filepath.Join(GetBaseDir(true), constants.WAL_FILEPATH)
 
 	var initStoreStartTime = time.Now()
-	store, err := storage.InitStore(constants.MEMTABLE_SIZE, constants.SSTABLE_MAXFILELIMIT, constants.WAL_FILENAME, walFilepath, diskStorage)
+	store, err := storage.InitStore(constants.MEMTABLE_SIZE, constants.WAL_FILENAME, walFilepath, diskStorage)
 	var initStoreTimeDuration = time.Since(initStoreStartTime).Milliseconds()
 
 	if err != nil || store == nil {
