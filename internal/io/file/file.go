@@ -111,6 +111,11 @@ func (f *File) Create(op OperationType, isSync bool) error {
 		err      error
 	)
 
+	err = f.CreateAllDir()
+	if err != nil {
+		return fmt.Errorf("unable to create dir: %w", err)
+	}
+
 	switch op {
 	case CREATE:
 		fileInfo, err = os.Stat(f.filePathWithName)
@@ -134,6 +139,7 @@ func (f *File) Create(op OperationType, isSync bool) error {
 		if fileInfo != nil {
 			return nil
 		}
+
 		f.file, err = os.Create(f.filePathWithName)
 	}
 
@@ -321,4 +327,8 @@ func (f *File) Remove() error {
 	}
 
 	return nil
+}
+
+func (f *File) CreateAllDir() error {
+	return os.MkdirAll(f.path, constants.DIRPERMISSION)
 }

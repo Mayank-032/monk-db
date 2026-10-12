@@ -42,10 +42,6 @@ func readManifestFileData(manifestFile *file.File, level int) ([]string, error) 
 	return currLevelFiles, nil
 }
 
-func readManifestFileDataForHigherLevels(manifestFle *file.File, level, levelPlusOne int) ([]string, error) {
-	return []string{}, nil
-}
-
 func readRecordsFileData(file *file.File) ([]models.Record, error) {
 	contentBytes, err := file.Read()
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 
 type ssTable struct {
 	offset       int
+	level        int
 	lastOffset   int
 	cache        *cache.Cache[[]models.Record]
 	manifestFile *file.File
@@ -27,7 +28,7 @@ func NewSSTable(
 ) (*ssTable, error) {
 	err := os.Mkdir(constants.RECORDS_DIRPATH, constants.DIRPERMISSION)
 	if err != nil && !errors.Is(err, os.ErrExist) {
-		log.Println("create records dir")
+		log.Println("unable to create records dir")
 		return nil, err
 	}
 
@@ -152,34 +153,29 @@ func (sst *ssTable) Optimize(level int) error {
 	log.Println("Optimization Started")
 
 	/* 1) Let's start with fetching all the data in-memory at once */
+
 	var (
 		files = make([]string, 0)
 		err   error
 	)
 
-	// Read Manifest File to get the list of existing files at current level
+	// Read Manifest File to get the list of existing files at current level and next level
 	var manifestFile = sst.manifestFile
 
-	switch level {
-	case 0:
-		files, err = readManifestFileData(manifestFile, level)
-		if err != nil {
-			return fmt.Errorf("unable to compact, with read manifest file for current level err %w", err)
-		}
-
-		levelOneFiles, err := readManifestFileData(manifestFile, level+1)
-		if err != nil {
-			return fmt.Errorf("unable to compact, with read manifest file for current level+1 err %w", err)
-		}
-
-		files = append(files, levelOneFiles...)
-	default:
-		files, err = readManifestFileDataForHigherLevels(manifestFile, level, level+1)
-		if err != nil {
-			return fmt.Errorf("unable to compact, with read manifest file for higher levels err %w", err)
-		}
+	// Combine the list of files for current_level and current_level + 1
+	files, err = readManifestFileData(manifestFile, level)
+	if err != nil {
+		return fmt.Errorf("unable to compact, with read manifest file for current level err %w", err)
 	}
 
+	levelPlusOneFiles, err := readManifestFileData(manifestFile, level+1)
+	if err != nil {
+		return fmt.Errorf("unable to compact, with read manifest file for current level+1 err %w", err)
+	}
+
+	files = append(files, levelPlusOneFiles...)
+
+	// Combine the list of records, after reading each file from the list of combined files
 	var list = make([][]models.Record, 0)
 	for _, fileName := range files {
 		// read current level file
@@ -192,7 +188,7 @@ func (sst *ssTable) Optimize(level int) error {
 
 		list = append(list, records)
 	}
-	log.Println("maintain list of records in memory of all files")
+	log.Println("maintain list of records in-memory for all files")
 
 	// 2) calculate the new offset
 	lastOffset, err := calculateOffset(files[len(files)-1])

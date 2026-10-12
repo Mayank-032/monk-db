@@ -72,6 +72,7 @@ func main() {
 			totalUpdateOperations = totalUpdateOperations + 1
 
 			// log.Printf("PUT OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
+		/*
 		case constants.GET:
 			key := block[1]
 			expectedVal := block[2]
@@ -119,12 +120,14 @@ func main() {
 			totalUpdateOperations = totalUpdateOperations + 1
 
 			// log.Printf("DELETE OPERATION SUCCESS with index: %v, for key: %v\n", index, key)
+		*/
 		default:
 			log.Println("invalid operation")
 			os.Exit(1)
 			return
 		}
 
+		/*
 		// For every file limit reached requests, trigger compaction
 		var compactionStartTime = time.Now()
 		err = store.CompactIfRequired()
@@ -138,6 +141,7 @@ func main() {
 
 		totalCompactTimeInMs = totalCompactTimeInMs + int(totalTimeTakenInMs)
 		totalCompactOperations = totalCompactOperations + 1
+		*/
 	}
 
 	totalTimeTakenInMs := time.Since(startTime).Milliseconds()

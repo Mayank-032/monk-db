@@ -3,7 +3,6 @@ package storage
 import (
 	"encoding/json"
 	"log"
-	"monk-db/internal/constants"
 	"monk-db/internal/io/file"
 	"monk-db/internal/models"
 	"strconv"
@@ -41,18 +40,17 @@ func loadFromWalFile(walFile *file.File, size int) (map[string]Metadata, error) 
 		}
 
 		switch walRecord.Operation {
-		case constants.PUT:
+		case 0:
 			data[walRecord.Key] = Metadata{
 				Key: walRecord.Key,
 				Val: walRecord.Value,
 			}
-		case constants.GET:
+		case 1:
 			data[walRecord.Key] = Metadata{
-				Key:       walRecord.Key,
-				Val:       walRecord.Value,
-				isDeleted: true,
+				Key: walRecord.Key,
+				Val: walRecord.Value,
 			}
-		case constants.DELETE:
+		case 2:
 			data[walRecord.Key] = Metadata{
 				Key:       walRecord.Key,
 				Val:       walRecord.Value,

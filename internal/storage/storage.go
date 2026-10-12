@@ -1,9 +1,10 @@
 package storage
 
 import (
-	"encoding/json"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"log"
 	"monk-db/internal/constants"
 	"monk-db/internal/io/file"
@@ -44,9 +45,23 @@ type Store struct {
 }
 
 type WalRecord struct {
-	Operation string `json:"op"`
+	Operation int    `json:"op"`
 	Key       string `json:"key"`
 	Value     string `json:"value"`
+}
+
+func (wr *WalRecord) Encode() []byte {
+	var buf = make([]byte, 16+len(wr.Key)+len(wr.Value))
+	binary.BigEndian.PutUint32(buf[4:8], uint32(len(wr.Key)))
+	binary.BigEndian.PutUint32(buf[8:12], uint32(len(wr.Value)))
+	binary.BigEndian.PutUint32(buf[12:16], uint32(wr.Operation))
+	copy(buf[16:], []byte(wr.Key))
+	copy(buf[16+len(wr.Key):], []byte(wr.Value))
+
+	crc := crc32.ChecksumIEEE(buf[4:])
+	binary.BigEndian.PutUint32(buf[0:4], crc)
+
+	return buf
 }
 
 func InitStore(
@@ -82,7 +97,7 @@ func InitStore(
 }
 
 func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
-	log.Println("[PUT START] - ", key)
+	log.Println("[PUT] - ", key)
 
 	if s == nil || s.data == nil {
 		return false, errors.New(constants.ERRORSTORAGENOTINITIALIZED)
@@ -90,23 +105,19 @@ func (s *Store) Put(key, val string, isDeleted bool) (bool, error) {
 
 	key = strings.ToLower(key)
 
-	var op = constants.PUT
+	var op = 0
 	if isDeleted {
-		op = constants.DELETE
+		op = 1
 	}
 
-	var walRecord = WalRecord{
+	var walRecord = &WalRecord{
 		Operation: op,
 		Key:       key,
 		Value:     val,
 	}
-	walRecordBytes, err := json.Marshal(walRecord)
-	if err != nil {
-		return false, fmt.Errorf("unable to put while marshal wal records err %w", err)
-	}
-	walRecordBytes = append(walRecordBytes, []byte("\n")...)
+	walRecordBytes := walRecord.Encode()
 
-	err = s.walFile.Write(walRecordBytes, file.APPEND, true)
+	err := s.walFile.Write(walRecordBytes, file.APPEND, true)
 	if err != nil {
 		return false, fmt.Errorf("unable to put while write to wal file err %w", err)
 	}
@@ -200,18 +211,25 @@ func (s *Store) CompactIfRequired() error {
 }
 
 func (s *Store) _compact_(level int) error {
+	// Base Case1: If compaction at all levels is done
 	if level >= constants.SSTABLE_MAXLEVELS {
 		return nil
 	}
 
+	// count files at current level
 	totalFiles, err := s.diskStorage.CountFiles(level)
 	if err != nil {
 		return err
 	}
 
+	// Base Case2: If total files at current level reached the max limit, OPTIMIZE
 	if totalFiles >= constants.SSTABLE_MAXFILELIMIT {
-		return s.diskStorage.Optimize(level)
+		err = s.diskStorage.Optimize(level)
+		if err != nil {
+			return err
+		}
 	}
 
+	// move to next level after optimization at current level
 	return s._compact_(level + 1)
 }
